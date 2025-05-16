@@ -1,0 +1,373 @@
+<script setup>
+import { ref, watch, watchEffect, onMounted } from 'vue'
+import { initializeApp } from 'firebase/app'
+import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc } from 'firebase/firestore'
+import firebaseConfig from '../firebaseConfig'
+import { useRouter } from 'vue-router'
+
+const app = initializeApp(firebaseConfig)
+const db = getFirestore(app)
+
+defineProps({
+  msg: String,
+})
+
+const count = ref(0)
+
+// Google Calendar Event Form
+const eventTitle = ref('')
+const eventDescription = ref('')
+const eventDate = ref('')
+const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'))
+const minutes = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'))
+
+const startHour = ref('')
+const startMinute = ref('')
+const endHour = ref('')
+const endMinute = ref('')
+
+// Activity options with default time periods (in minutes)
+const activityOptions = ref([])
+
+// Selected activities array
+const selectedActivities = ref([])
+
+// Activity selection for the dropdown
+const activitySelection = ref('')
+
+// User-selected starting hour and minute for the first activity
+const userStartHour = ref('09')
+const userStartMinute = ref('00')
+
+// Available slots for the selected date
+const availableSlots = ref([])
+
+// Selected start time
+const selectedStartTime = ref('')
+
+// Fetch admin settings (open/close time, activities) from Firestore
+const adminSettings = ref({ openTime: '09:00', closeTime: '20:00', activities: [
+  { name: 'Haircut', duration: 30 },
+  { name: 'Hair Coloring', duration: 60 },
+  { name: 'Facial', duration: 45 },
+  { name: 'Manicure', duration: 40 },
+  { name: 'Pedicure', duration: 50 },
+  { name: 'Massage', duration: 60 },
+] })
+
+async function fetchAdminSettings() {
+  const docSnap = await getDocs(collection(db, 'settings'))
+  const settingsDoc = docSnap.docs.find(d => d.id === 'saloon')
+  if (settingsDoc) {
+    adminSettings.value = settingsDoc.data()
+  }
+}
+
+// Use admin activities and open/close time in the form
+watchEffect(() => {
+  activityOptions.value = [...adminSettings.value.activities]
+})
+
+// Helper to get available start times for the first activity
+async function getAvailableStartTimes() {
+  if (!eventDate.value) return [];
+  // Fetch events for the selected date from Firestore
+  const querySnapshot = await getDocs(collection(db, 'events'));
+  const eventsOnDate = querySnapshot.docs
+    .map(doc => doc.data())
+    .filter(e => e.date === eventDate.value);
+  // Build a set of occupied time slots (in minutes since 00:00)
+  const occupied = new Set();
+  eventsOnDate.forEach(event => {
+    event.activities.forEach(act => {
+      const start = parseInt(act.startHour) * 60 + parseInt(act.startMinute);
+      const end = parseInt(act.endHour) * 60 + parseInt(act.endMinute);
+      for (let t = start; t < end; t++) occupied.add(t);
+    });
+  });
+  // Generate all possible 30-min slots from openTime to closeTime
+  const slots = [];
+  const duration = activityOptions.value.find(opt => opt.name === activitySelection.value)?.duration || 30;
+  const [openHour, openMinute] = adminSettings.value.openTime.split(':').map(Number);
+  const [closeHour, closeMinute] = adminSettings.value.closeTime.split(':').map(Number);
+  for (let h = openHour; h < closeHour || (h === closeHour && openMinute < closeMinute); h++) {
+    for (let m = (h === openHour ? openMinute : 0); m < 60; m += 30) {
+      if (h > closeHour || (h === closeHour && m >= closeMinute)) break;
+      const t = h * 60 + m;
+      // Check if this slot is free for the duration of the first activity
+      let isFree = true;
+      for (let d = 0; d < duration; d++) {
+        if (occupied.has(t + d)) { isFree = false; break; }
+      }
+      if (isFree) slots.push({ hour: h.toString().padStart(2, '0'), minute: m.toString().padStart(2, '0') });
+    }
+  }
+  // If no slots, return empty array
+  return slots;
+}
+
+// Watch for eventDate and activitySelection changes and update available slots
+watch([eventDate, activitySelection], async () => {
+  availableSlots.value = await getAvailableStartTimes();
+  if (availableSlots.value.length > 0) {
+    // Always set the next available slot as the default
+    const firstSlot = availableSlots.value[0];
+    selectedStartTime.value = `${firstSlot.hour}:${firstSlot.minute}`;
+    userStartHour.value = firstSlot.hour;
+    userStartMinute.value = firstSlot.minute;
+  } else {
+    selectedStartTime.value = adminSettings.value.openTime;
+    const [openHour, openMinute] = adminSettings.value.openTime.split(':');
+    userStartHour.value = openHour;
+    userStartMinute.value = openMinute;
+  }
+});
+
+// Update selectedStartTime when availableSlots changes
+watch(availableSlots, (slots) => {
+  if (slots.length > 0) {
+    selectedStartTime.value = slots[0].hour + ':' + slots[0].minute
+    userStartHour.value = slots[0].hour
+    userStartMinute.value = slots[0].minute
+  } else {
+    selectedStartTime.value = ''
+    const [openHour, openMinute] = adminSettings.value.openTime.split(':')
+    userStartHour.value = openHour
+    userStartMinute.value = openMinute
+  }
+})
+
+// Watch selectedStartTime and update userStartHour/userStartMinute
+watch(selectedStartTime, (val) => {
+  if (val) {
+    const [h, m] = val.split(':')
+    userStartHour.value = h
+    userStartMinute.value = m
+  }
+})
+
+function addActivity() {
+  if (!activitySelection.value) {
+    alert('Please select an activity.');
+    return;
+  }
+  const selected = activityOptions.value.find(opt => opt.name === activitySelection.value)
+  let prevEndHour = userStartHour.value, prevEndMinute = userStartMinute.value;
+  if (selectedActivities.value.length > 0) {
+    const last = selectedActivities.value[selectedActivities.value.length - 1];
+    prevEndHour = last.endHour;
+    prevEndMinute = last.endMinute;
+  }
+  const start = new Date(`2025-01-01T${prevEndHour}:${prevEndMinute}`)
+  const end = new Date(start.getTime() + selected.duration * 60000)
+  const endHour = end.getHours().toString().padStart(2, '0')
+  const endMinute = end.getMinutes().toString().padStart(2, '0')
+  selectedActivities.value.push({
+    activity: activitySelection.value,
+    startHour: prevEndHour,
+    startMinute: prevEndMinute,
+    endHour,
+    endMinute
+  })
+  activitySelection.value = ''
+  // After first activity, reset userStartHour/Minute to default for next event
+}
+
+// Store events locally
+const localEvents = ref([])
+
+async function saveEventToFirebase() {
+  if (!eventTitle.value || !eventDate.value || selectedActivities.value.length === 0) {
+    alert('Please fill in all required fields and add at least one activity.');
+    return;
+  }
+  await addDoc(collection(db, 'events'), {
+    title: eventTitle.value,
+    description: eventDescription.value,
+    date: eventDate.value,
+    activities: JSON.parse(JSON.stringify(selectedActivities.value)),
+    createdAt: new Date().toISOString(),
+  })
+  eventTitle.value = ''
+  eventDescription.value = ''
+  eventDate.value = ''
+  selectedActivities.value = []
+  await fetchEventsFromFirebase()
+}
+
+async function fetchEventsFromFirebase() {
+  const querySnapshot = await getDocs(collection(db, 'events'))
+  localEvents.value = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+}
+
+async function deleteEventFromFirebase(id) {
+  await deleteDoc(doc(db, 'events', id))
+  await fetchEventsFromFirebase()
+}
+
+const router = useRouter()
+
+function goToSettings() {
+  router.push('/admin')
+}
+
+onMounted(() => {
+  fetchAdminSettings()
+  fetchEventsFromFirebase()
+})
+</script>
+
+<template>
+  <form @submit.prevent="saveEventToFirebase" class="event-form" style="margin-top:2rem;max-width:400px;">
+    <h2>Add Event to My Calendar</h2>
+    <div>
+      <label for="event-title">Event Title*:<br />
+        <input id="event-title" v-model="eventTitle" required placeholder="e.g. Haircut Appointment" />
+      </label>
+    </div>
+    <div>
+      <label for="event-description">Event Description:<br />
+        <textarea id="event-description" v-model="eventDescription" placeholder="e.g. Haircut with stylist Jane"></textarea>
+      </label>
+    </div>
+    <div>
+      <label for="event-date">Event Date*:<br />
+        <input id="event-date" type="date" v-model="eventDate" required />
+      </label>
+    </div>
+    <div v-if="selectedActivities.length === 0 && availableSlots.length > 0" style="margin-bottom:1rem;">
+      <label for="start-time-select" style="display:block; margin-bottom:0.25rem;">Start Time*:</label>
+      <select id="start-time-select" v-model="selectedStartTime" style="width:100%;">
+        <option v-for="slot in availableSlots" :key="slot.hour + '-' + slot.minute" :value="slot.hour + ':' + slot.minute">
+          {{ slot.hour }}:{{ slot.minute }}
+        </option>
+      </select>
+    </div>
+    <div style="border:1px solid #333; border-radius:6px; padding:1rem; margin-bottom:1rem; background:#181818;">
+      <label for="activity-select">Activity*:<br /></label>
+      <select id="activity-select" v-model="activitySelection">
+        <option value="" disabled>Select Activity</option>
+        <option v-for="opt in activityOptions" :key="opt.name" :value="opt.name" :disabled="selectedActivities.some(a => a.activity === opt.name)">{{ opt.name }}</option>
+      </select>
+      <button type="button" @click="addActivity" :disabled="!activitySelection" style="margin-left:1rem;">Add Activity</button>
+    </div>
+    <div v-for="(act, idx) in selectedActivities" :key="idx" style="border:1px solid #333; border-radius:6px; padding:1rem; margin-bottom:1rem; background:#222;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-weight:600;">{{ act.activity }}</span>
+        <button type="button" @click="removeActivity(idx)" style="background:#c00; color:#fff; border:none; border-radius:4px; padding:0.25rem 0.75rem; cursor:pointer;">Remove</button>
+      </div>
+      <div style="display:flex; gap:1rem; align-items:center; margin-top:0.5rem;">
+        <div>
+          <span style="font-weight:600; display:block;">Start Time:</span>
+          <span>{{ act.startHour }}:{{ act.startMinute }}</span>
+        </div>
+        <div>
+          <span style="font-weight:600; display:block;">End Time:</span>
+          <span>{{ act.endHour }}:{{ act.endMinute }}</span>
+        </div>
+      </div>
+    </div>
+    <button type="submit" style="margin-top:1rem; background:#1976d2;">Save to My Calendar</button>
+  </form>
+  
+</template>
+
+<style scoped>
+.read-the-docs {
+  color: #888;
+}
+.event-form {
+  background: #000000;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.event-form h2 {
+  margin-top: 0;
+}
+.event-form input,
+.event-form textarea,
+.event-form select {
+  width: 100%;
+  margin-top: 0.25rem;
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+.event-form button {
+  background: #42b983;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background 0.2s;
+}
+.event-form button:hover {
+  background: #369870;
+}
+.custom-calendar {
+  margin-top: 2.5rem;
+  background: #181c24;
+  border-radius: 10px;
+  padding: 2rem;
+  box-shadow: 0 4px 16px rgba(25, 118, 210, 0.08);
+  color: #fff;
+}
+.custom-calendar h2 {
+  margin-top: 0;
+  color: #90caf9;
+  letter-spacing: 1px;
+}
+.empty-calendar {
+  color: #aaa;
+  font-style: italic;
+  padding: 1rem 0;
+}
+.calendar-event {
+  background: #23293a;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.5rem;
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.05);
+}
+.event-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.event-title {
+  font-weight: bold;
+  font-size: 1.1rem;
+  color: #42b983;
+}
+.event-date {
+  font-size: 0.95rem;
+  color: #90caf9;
+}
+.event-description {
+  color: #b0bec5;
+  margin-bottom: 0.5rem;
+}
+.event-activities {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.event-activities li {
+  margin-bottom: 0.25rem;
+  color: #fff;
+}
+.activity-name {
+  font-weight: 500;
+  color: #ffd54f;
+}
+.activity-time {
+  color: #90caf9;
+  margin-left: 0.5rem;
+}
+</style>
