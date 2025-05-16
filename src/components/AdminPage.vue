@@ -2,6 +2,7 @@
   <div class="admin-root">
     <nav class="admin-navbar">
       <span class="navbar-title">Saloon Admin</span>
+      <router-link v-if="isLoggedIn" to="/admin-settings" class="nav-link">Settings</router-link>
       <button v-if="isLoggedIn" @click="logout">Logout</button>
     </nav>
     <div class="admin-login" v-if="!isLoggedIn">
@@ -44,27 +45,6 @@
           </div>
         </div>
       </div>
-      <div class="admin-settings">
-        <h3>Saloon Settings</h3>
-        <form @submit.prevent="saveAdminSettings" class="settings-form">
-          <label>Open Time:
-            <input type="time" v-model="openTime" required />
-          </label>
-          <label>Close Time:
-            <input type="time" v-model="closeTime" required />
-          </label>
-          <div class="activities-settings">
-            <label>Activities &amp; Duration (minutes):</label>
-            <div v-for="(act, idx) in adminActivities" :key="idx" class="activity-row">
-              <input v-model="act.name" placeholder="Activity Name" style="width: 140px;" />
-              <input v-model.number="act.duration" type="number" min="1" style="width: 80px;" />
-              <button type="button" @click="adminActivities.splice(idx,1)" v-if="adminActivities.length > 1">Remove</button>
-            </div>
-            <button type="button" @click="adminActivities.push({ name: '', duration: 30 })">Add Activity</button>
-          </div>
-          <button type="submit" style="margin-top:1rem;">Save Settings</button>
-        </form>
-      </div>
     </div>
     <div v-if="showEventModal" class="event-modal-overlay" @click.self="closeEventModal">
       <div class="event-modal">
@@ -89,13 +69,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { getFirestore, collection, getDocs, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore'
 import { initializeApp } from 'firebase/app'
+import { useRouter } from 'vue-router'
 import firebaseConfig from '../firebaseConfig'
 
 const app = initializeApp(firebaseConfig)
 const db = getFirestore(app)
+const router = useRouter()
 
 const username = ref('')
 const password = ref('')
@@ -116,6 +98,22 @@ const adminActivities = ref([
   { name: 'Pedicure', duration: 50 },
   { name: 'Massage', duration: 60 },
 ])
+
+let refreshInterval = null
+
+function startAutoRefresh() {
+  if (refreshInterval) clearInterval(refreshInterval)
+  refreshInterval = setInterval(() => {
+    if (isLoggedIn.value) fetchBookings()
+  }, 300000) // 5 minutes
+}
+
+function stopAutoRefresh() {
+  if (refreshInterval) {
+    clearInterval(refreshInterval)
+    refreshInterval = null
+  }
+}
 
 async function saveAdminSettings() {
   localStorage.setItem('saloonOpenTime', openTime.value)
@@ -217,11 +215,23 @@ function getEventsForDayAndSlot(day, slot) {
   });
 }
 
+onMounted(() => {
+  if (localStorage.getItem('adminLoggedIn') === 'true') {
+    isLoggedIn.value = true
+    fetchBookings()
+    startAutoRefresh()
+  } else {
+    loadAdminSettings()
+  }
+})
+
 function login() {
   if (username.value === ADMIN_USERNAME && password.value === ADMIN_PASSWORD) {
     isLoggedIn.value = true
     loginError.value = ''
+    localStorage.setItem('adminLoggedIn', 'true')
     fetchBookings()
+    startAutoRefresh()
   } else {
     loginError.value = 'Invalid username or password.'
   }
@@ -232,6 +242,9 @@ function logout() {
   username.value = ''
   password.value = ''
   bookings.value = []
+  localStorage.removeItem('adminLoggedIn')
+  stopAutoRefresh()
+  router.push('/')
 }
 
 async function fetchBookings() {
@@ -271,9 +284,8 @@ async function deleteEvent(id) {
   closeEventModal()
 }
 
-onMounted(() => {
-  loadAdminSettings()
-  if (isLoggedIn.value) fetchBookings()
+onUnmounted(() => {
+  stopAutoRefresh()
 })
 </script>
 
@@ -309,6 +321,12 @@ onMounted(() => {
   letter-spacing: 1px;
 }
 
+.nav-link {
+  color: #90caf9;
+  text-decoration: none;
+  margin-right: 1rem;
+}
+
 .admin-login, .admin-dashboard {
   max-width: 1200px;
   margin: 4.5rem auto 0 auto;
@@ -317,11 +335,6 @@ onMounted(() => {
   padding: 2rem;
   color: #fff;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-}
-
-.admin-login label, .admin-dashboard label {
-  display: block;
-  margin-top: 1rem;
 }
 
 .admin-login input {
@@ -501,56 +514,5 @@ onMounted(() => {
 
 .modal-actions button[style*='background:#c00'] {
   background: #c00 !important;
-}
-
-.admin-settings {
-  background: #23293a;
-  border-radius: 8px;
-  padding: 1.5rem 2rem;
-  margin-bottom: 2rem;
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.08);
-  max-width: 600px;
-}
-.settings-form label {
-  display: block;
-  margin-bottom: 1rem;
-  font-weight: 500;
-}
-.activities-settings {
-  margin-bottom: 1rem;
-}
-.activity-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-.settings-form input[type='time'],
-.settings-form input[type='number'],
-.settings-form input[type='text'] {
-  padding: 0.3rem 0.5rem;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-  font-size: 1rem;
-}
-.settings-form button[type='button'] {
-  background: #c00;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  padding: 0.25rem 0.75rem;
-  cursor: pointer;
-  font-size: 0.95rem;
-  margin-left: 0.5rem;
-}
-.settings-form button[type='submit'] {
-  background: #1976d2;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  padding: 0.5rem 1.5rem;
-  cursor: pointer;
-  font-size: 1rem;
 }
 </style>
