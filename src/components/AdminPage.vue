@@ -28,7 +28,10 @@
               <div v-for="day in weekDays" :key="day" class="calendar-cell day-header">{{ day }}</div>
             </div>
             <div v-for="slot in slots" :key="slot" class="calendar-row">
-              <div class="calendar-cell time-header">{{ slot }}</div>
+              <div class="calendar-cell time-header" :class="{ 'current-time': slot === getCurrentTime().slice(0,5) }">
+                {{ slot }}
+                <span v-if="slot === getCurrentTime().slice(0,5)" class="current-time-indicator">&larr; Now</span>
+              </div>
               <div v-for="day in weekDays" :key="day + '-' + slot" class="calendar-cell">
                 <div v-for="event in getEventsForDayAndSlot(day, slot)" :key="event.id + '-' + slot" class="calendar-event-block" @click="openEventModal(event)">
                   <div class="event-title">{{ event.title }}</div>
@@ -169,6 +172,14 @@ function getSlots() {
 }
 const slots = getSlots();
 
+// Helper: get current time in HH:mm format
+function getCurrentTime() {
+  const now = new Date();
+  const h = now.getHours().toString().padStart(2, '0');
+  const m = now.getMinutes().toString().padStart(2, '0');
+  return `${h}:${m}`;
+}
+
 // Helper: get events for a given day and hour
 function getEventsForDayAndHour(day, hour) {
   // Find the date for this week day
@@ -299,7 +310,7 @@ onUnmounted(() => {
 }
 
 .admin-navbar {
-  width: 1500px;
+  width: 1300px;
   max-width: 100%;
   height: 56px;
   background: #23293a;
@@ -514,5 +525,18 @@ onUnmounted(() => {
 
 .modal-actions button[style*='background:#c00'] {
   background: #c00 !important;
+}
+
+.current-time {
+  background: #2e7d32 !important;
+  color: #fff !important;
+  font-weight: bold;
+  position: relative;
+}
+
+.current-time-indicator {
+  color: #ffd54f;
+  font-size: 0.95em;
+  margin-left: 0.5em;
 }
 </style>

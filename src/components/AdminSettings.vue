@@ -92,7 +92,7 @@ onMounted(() => {
   flex-direction: column;
 }
 .admin-navbar {
-  width: 1500px;
+  width: 1300px;
   max-width: 100%;
   height: 56px;
   background: #23293a;
