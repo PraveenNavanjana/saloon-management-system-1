@@ -40,6 +40,7 @@
                     <li v-for="(act, idx) in event.activities" :key="idx">
                       <span class="activity-name">{{ act.activity }}</span>
                       <span class="activity-time">{{ act.startHour }}:{{ act.startMinute }} - {{ act.endHour }}:{{ act.endMinute }}</span>
+                      <span v-if="act.barber" style="color:#42b983; margin-left:1rem;">Barber: {{ act.barber }}</span>
                     </li>
                   </ul>
                 </div>
@@ -94,12 +95,12 @@ const modalEvent = ref(null)
 const openTime = ref('09:00')
 const closeTime = ref('20:00')
 const adminActivities = ref([
-  { name: 'Haircut', duration: 30 },
-  { name: 'Hair Coloring', duration: 60 },
-  { name: 'Facial', duration: 45 },
-  { name: 'Manicure', duration: 40 },
-  { name: 'Pedicure', duration: 50 },
-  { name: 'Massage', duration: 60 },
+  { name: 'Haircut', duration: 30, price: 20 },
+  { name: 'Hair Coloring', duration: 60, price: 50 },
+  { name: 'Facial', duration: 45, price: 35 },
+  { name: 'Manicure', duration: 40, price: 25 },
+  { name: 'Pedicure', duration: 50, price: 30 },
+  { name: 'Massage', duration: 60, price: 60 },
 ])
 
 let refreshInterval = null
@@ -145,7 +146,8 @@ async function loadAdminSettings() {
     const data = docSnap.data()
     openTime.value = data.openTime
     closeTime.value = data.closeTime
-    adminActivities.value = data.activities
+    // Ensure price is present for all activities
+    adminActivities.value = data.activities.map(act => ({ ...act, price: act.price ?? 0 }))
   }
 }
 
