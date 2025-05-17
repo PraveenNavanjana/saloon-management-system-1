@@ -54,12 +54,7 @@ const currency = ref('₹')
 
 // Fetch admin settings (open/close time, activities) from Firestore
 const adminSettings = ref({ openTime: '09:00', closeTime: '20:00', activities: [
-  { name: 'Haircut', duration: 30, price: 20 },
-  { name: 'Hair Coloring', duration: 60, price: 50 },
-  { name: 'Facial', duration: 45, price: 40 },
-  { name: 'Manicure', duration: 40, price: 25 },
-  { name: 'Pedicure', duration: 50, price: 30 },
-  { name: 'Massage', duration: 60, price: 60 },
+ 
 ] })
 
 async function fetchAdminSettings() {
@@ -202,67 +197,92 @@ function assignBarber(activity, startHour, startMinute, endHour, endMinute, date
   return null // No available barber
 }
 
-// In addActivity, use the global price and only allow duration override per barber
+// In addActivity, use the global price and assign a barber with the correct duration for the selected activity
 function addActivity() {
   if (!activitySelection.value) {
     alert('Please select an activity.');
     return;
   }
-  const selected = activityOptions.value.find(opt => opt.name === activitySelection.value)
+  // Get the duration for the selected activity from the first eligible barber (all barbers for this activity should have a duration)
+  const eligibleBarbers = barberOptions.value.filter(barber =>
+    barber.activities.some(act => act.name === activitySelection.value)
+  )
+  if (eligibleBarbers.length === 0) {
+    alert('No barber available for this activity.');
+    return;
+  }
+  // Determine the earliest possible start time (after previous activity, or user-selected start time)
   let prevEndHour = userStartHour.value, prevEndMinute = userStartMinute.value;
   if (selectedActivities.value.length > 0) {
     const last = selectedActivities.value[selectedActivities.value.length - 1];
     prevEndHour = last.endHour;
     prevEndMinute = last.endMinute;
   }
-  // Find eligible barbers and their custom duration for this activity
-  const eligibleBarbers = barberOptions.value.filter(barber =>
-    barber.activities.some(act => act.name === activitySelection.value)
-  )
-  let duration = selected.duration
-  let assignedBarber = null
-  let endHour = prevEndHour, endMinute = prevEndMinute
+  // Get close time
+  const [closeHour, closeMinute] = adminSettings.value.closeTime.split(':').map(Number);
+  // Try all eligible barbers and all possible start times (in 30-min increments)
+  let found = false;
+  let assignedBarber = null, assignedStartHour = null, assignedStartMinute = null, assignedEndHour = null, assignedEndMinute = null, duration = null;
+  // Try each barber
   for (const barber of eligibleBarbers) {
-    const barberAct = barber.activities.find(act => act.name === activitySelection.value)
-    if (!barberAct) continue
-    duration = barberAct.duration
-    // Calculate end time
-    const start = new Date(`2025-01-01T${prevEndHour}:${prevEndMinute}`)
-    const end = new Date(start.getTime() + duration * 60000)
-    const eHour = end.getHours().toString().padStart(2, '0')
-    const eMinute = end.getMinutes().toString().padStart(2, '0')
-    // Check if this barber is available
-    const isAvailable = !localEvents.value.filter(e => e.date === eventDate.value).some(event =>
-      event.activities.some(act => act.barber === barber.name && (
-        (parseInt(act.startHour) * 60 + parseInt(act.startMinute)) < (end.getHours() * 60 + end.getMinutes()) &&
-        (parseInt(act.endHour) * 60 + parseInt(act.endMinute)) > (parseInt(prevEndHour) * 60 + parseInt(prevEndMinute))
-      ))
-    )
-    if (isAvailable) {
-      assignedBarber = barber.name
-      endHour = eHour
-      endMinute = eMinute
-      break
+    const barberAct = barber.activities.find(act => act.name === activitySelection.value);
+    if (!barberAct) continue;
+    duration = barberAct.duration;
+    // Try all possible start times from prevEndHour:prevEndMinute to closing time
+    let h = parseInt(prevEndHour), m = parseInt(prevEndMinute);
+    while (h < closeHour || (h === closeHour && m <= closeMinute - duration)) {
+      // Calculate end time
+      const start = new Date(`2025-01-01T${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
+      const end = new Date(start.getTime() + duration * 60000);
+      const eHour = end.getHours().toString().padStart(2, '0');
+      const eMinute = end.getMinutes().toString().padStart(2, '0');
+      // Check if this barber is available in Firestore events
+      const isBusyInEvents = localEvents.value.filter(e => e.date === eventDate.value).some(event =>
+        event.activities.some(act => act.barber === barber.name && (
+          (parseInt(act.startHour) * 60 + parseInt(act.startMinute)) < (end.getHours() * 60 + end.getMinutes()) &&
+          (parseInt(act.endHour) * 60 + parseInt(act.endMinute)) > (h * 60 + m)
+        ))
+      );
+      // Check if this barber is available in current session's selectedActivities
+      const isBusyInSession = selectedActivities.value.some(act =>
+        act.barber === barber.name &&
+        ((parseInt(act.startHour) * 60 + parseInt(act.startMinute)) < (end.getHours() * 60 + end.getMinutes()) &&
+         (parseInt(act.endHour) * 60 + parseInt(act.endMinute)) > (h * 60 + m))
+      );
+      if (!isBusyInEvents && !isBusyInSession) {
+        assignedBarber = barber.name;
+        assignedStartHour = h.toString().padStart(2, '0');
+        assignedStartMinute = m.toString().padStart(2, '0');
+        assignedEndHour = eHour;
+        assignedEndMinute = eMinute;
+        found = true;
+        break;
+      }
+      // Increment by 30 minutes
+      m += 30;
+      if (m >= 60) { h++; m = 0; }
     }
+    if (found) break;
   }
-  if (!assignedBarber) {
-    alert('No available barber for this activity and time.');
+  if (!found) {
+    alert('No available barber or time slot for this activity.');
     return;
   }
   selectedActivities.value.push({
     activity: activitySelection.value,
-    startHour: prevEndHour,
-    startMinute: prevEndMinute,
-    endHour,
-    endMinute,
-    barber: assignedBarber
-  })
-  activitySelection.value = ''
+    startHour: assignedStartHour,
+    startMinute: assignedStartMinute,
+    endHour: assignedEndHour,
+    endMinute: assignedEndMinute,
+    barber: assignedBarber,
+    duration: duration
+  });
+  activitySelection.value = '';
   // Update total price
   totalPrice.value = selectedActivities.value.reduce((sum, act) => {
-    const found = activityOptions.value.find(opt => opt.name === act.activity)
-    return sum + (found?.price || 0)
-  }, 0)
+    const found = activityOptions.value.find(opt => opt.name === act.activity);
+    return sum + (found?.price || 0);
+  }, 0);
 }
 
 function removeActivity(idx) {
@@ -316,6 +336,28 @@ onMounted(() => {
   fetchAdminSettings()
   fetchEventsFromFirebase()
 })
+
+const calendarWeekOffset = ref(0)
+
+function getCurrentWeekDates() {
+  const today = new Date()
+  const startOfWeek = new Date(today)
+  startOfWeek.setDate(today.getDate() - today.getDay() + (calendarWeekOffset.value * 7))
+  const weekDates = []
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(startOfWeek)
+    d.setDate(startOfWeek.getDate() + i)
+    weekDates.push(d)
+  }
+  return weekDates
+}
+
+function goToPrevWeek() {
+  calendarWeekOffset.value--
+}
+function goToNextWeek() {
+  calendarWeekOffset.value++
+}
 </script>
 
 <template>

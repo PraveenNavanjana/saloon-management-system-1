@@ -19,6 +19,11 @@
     <div v-else class="admin-dashboard">
       <div class="calendar-section">
         <h3>All Bookings Calendar</h3>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+          <button @click="goToPrevWeek" style="background:#23293a; color:#fff; border:none; border-radius:4px; padding:0.5rem 1rem;">&lt; Prev Week</button>
+          <span style="color:#90caf9; font-weight:600;">Week of {{ getCurrentWeekDates()[0].toLocaleDateString() }}</span>
+          <button @click="goToNextWeek" style="background:#23293a; color:#fff; border:none; border-radius:4px; padding:0.5rem 1rem;">Next Week &gt;</button>
+        </div>
         <div v-if="loading">Loading bookings...</div>
         <div v-else>
           <div v-if="bookings.length === 0" class="empty-calendar">No bookings found.</div>
@@ -102,6 +107,28 @@ const adminActivities = ref([
   { name: 'Pedicure', duration: 50, price: 30 },
   { name: 'Massage', duration: 60, price: 60 },
 ])
+
+const calendarWeekOffset = ref(0)
+
+function getCurrentWeekDates() {
+  const today = new Date()
+  const startOfWeek = new Date(today)
+  startOfWeek.setDate(today.getDate() - today.getDay() + (calendarWeekOffset.value * 7))
+  const weekDates = []
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(startOfWeek)
+    d.setDate(startOfWeek.getDate() + i)
+    weekDates.push(d)
+  }
+  return weekDates
+}
+
+function goToPrevWeek() {
+  calendarWeekOffset.value--
+}
+function goToNextWeek() {
+  calendarWeekOffset.value++
+}
 
 let refreshInterval = null
 
@@ -205,24 +232,18 @@ function getEventsForDayAndHour(day, hour) {
 
 // Helper: get events for a given day and slot
 function getEventsForDayAndSlot(day, slot) {
-  const today = new Date();
-  const startOfWeek = new Date(today);
-  startOfWeek.setDate(today.getDate() - today.getDay());
-  const dayIdx = weekDays.indexOf(day);
-  const date = new Date(startOfWeek);
-  date.setDate(startOfWeek.getDate() + dayIdx);
-  const dateStr = date.toISOString().slice(0, 10);
+  // Use week offset for correct week
+  const weekDates = getCurrentWeekDates()
+  const dayIdx = weekDays.indexOf(day)
+  const dateStr = weekDates[dayIdx].toISOString().slice(0, 10)
   const [slotHour, slotMinute] = slot.split(':');
-  // Return events for this date and slot
   return bookings.value.filter(event => {
     if (event.date !== dateStr) return false;
-    // Check if any activity overlaps with this slot
     return event.activities.some(act => {
       const actStart = parseInt(act.startHour) * 60 + parseInt(act.startMinute);
       const actEnd = parseInt(act.endHour) * 60 + parseInt(act.endMinute);
       const slotStart = parseInt(slotHour) * 60 + parseInt(slotMinute);
       const slotEnd = slotStart + 30;
-      // Overlap if activity starts before slot ends and ends after slot starts
       return actStart < slotEnd && actEnd > slotStart;
     });
   });

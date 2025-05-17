@@ -91,14 +91,7 @@ const adminActivities = ref([
 ])
 
 const adminBarbers = ref([
-  { name: 'John', activities: [
-    { name: 'Haircut', duration: 30 },
-    { name: 'Facial', duration: 45 }
-  ] },
-  { name: 'Jane', activities: [
-    { name: 'Hair Coloring', duration: 60 },
-    { name: 'Manicure', duration: 40 }
-  ] }
+ 
 ])
 
 watch(currency, (val) => {
