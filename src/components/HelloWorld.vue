@@ -284,34 +284,90 @@ function removeActivity(idx) {
 // Store events locally
 const localEvents = ref([])
 
+// Add a new ref for the email field
+const eventEmail = ref('')
+
 async function saveEventToFirebase() {
   if (!eventTitle.value || !eventDate.value || selectedActivities.value.length === 0) {
-    alert('Please fill in all required fields and add at least one activity.')
+    alert('Please fill in your name, select a date, and choose at least one service.')
     return
   }
-  await addDoc(collection(db, 'events'), {
-    title: eventTitle.value,
-    description: eventDescription.value,
-    date: eventDate.value,
-    activities: JSON.parse(JSON.stringify(selectedActivities.value)),
-    createdAt: new Date().toISOString(),
-  })
-  eventTitle.value = ''
-  eventDescription.value = ''
-  eventDate.value = ''
-  selectedActivities.value = []
-  await fetchEventsFromFirebase()
+  
+  try {
+    // Ensure date is in YYYY-MM-DD format
+    const dateObj = new Date(eventDate.value);
+    const formattedDate = dateObj.toISOString().split('T')[0];
+    
+    // Create the booking object with new fields
+    const bookingData = {
+      title: eventTitle.value,
+      description: eventDescription.value, // Now used for contact number
+      email: eventEmail.value, // New field for email
+      date: formattedDate,  // Use standardized date format
+      activities: JSON.parse(JSON.stringify(selectedActivities.value)),
+      createdAt: new Date().toISOString(),
+    };
+    
+    console.log('Saving appointment with date:', formattedDate);
+    
+    // Add to Firestore
+    await addDoc(collection(db, 'events'), bookingData);
+    
+    // Clear form
+    eventTitle.value = '';
+    eventDescription.value = '';
+    eventEmail.value = '';
+    eventDate.value = '';
+    selectedActivities.value = [];
+    
+    // Refresh local events
+    await fetchEventsFromFirebase();
+    
+    alert('Your appointment has been booked successfully!');
+  } catch (error) {
+    console.error('Error saving appointment:', error);
+    alert('There was an error booking your appointment. Please try again.');
+  }
 }
 
+// Function to ensure date format consistency when fetching events
 async function fetchEventsFromFirebase() {
-  const querySnapshot = await getDocs(collection(db, 'events'))
-  localEvents.value = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  const querySnapshot = await getDocs(collection(db, 'events'));
+  localEvents.value = querySnapshot.docs.map(doc => {
+    const data = doc.data();
+    // Standardize date format if needed
+    if (data.date) {
+      try {
+        const dateObj = new Date(data.date);
+        if (!isNaN(dateObj.getTime())) {
+          data.date = dateObj.toISOString().split('T')[0];
+        }
+      } catch (e) {
+        console.error("Error formatting date:", e);
+      }
+    }
+    return { id: doc.id, ...data };
+  });
 }
 
-async function deleteEventFromFirebase(id) {
-  await deleteDoc(doc(db, 'events', id))
-  await fetchEventsFromFirebase()
-}
+// Watch for date selection and ensure consistent format
+watch(eventDate, (newDate) => {
+  if (newDate) {
+    try {
+      // Only format if it's not already in YYYY-MM-DD format
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
+        const dateObj = new Date(newDate);
+        if (!isNaN(dateObj.getTime())) {
+          // Format as YYYY-MM-DD
+          const formattedForInput = dateObj.toISOString().split('T')[0];
+          eventDate.value = formattedForInput;
+        }
+      }
+    } catch (e) {
+      console.error("Invalid date selected:", e);
+    }
+  }
+});
 
 const router = useRouter()
 
@@ -322,6 +378,11 @@ function goToSettings() {
 onMounted(() => {
   fetchAdminSettings()
   fetchEventsFromFirebase()
+  // Set default date to today if no date is selected
+  if (!eventDate.value) {
+    const today = new Date();
+    eventDate.value = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+  }
 })
 
 const calendarWeekOffset = ref(0)
@@ -345,6 +406,12 @@ function goToPrevWeek() {
 function goToNextWeek() {
   calendarWeekOffset.value++
 }
+
+// Add this function to help with date picker focus
+function focusDateInput(event) {
+  // This helps ensure the date picker opens on some mobile browsers
+  event.target.showPicker && event.target.showPicker();
+}
 </script>
 
 <template>
@@ -360,26 +427,38 @@ function goToNextWeek() {
       <div class="form-content">
         <div class="form-group">
           <label for="event-title">
-            <i class="fas fa-calendar-alt"></i> Appointment Title
+            <i class="fas fa-user"></i> Enter Name
           </label>
           <input 
             id="event-title" 
             v-model="eventTitle" 
             required 
-            placeholder="e.g. Haircut Appointment" 
+            placeholder="Your full name" 
+          />
+        </div>
+        
+        <div class="form-group">
+          <label for="event-email">
+            <i class="fas fa-envelope"></i> Enter Email <span class="optional-label">(optional)</span>
+          </label>
+          <input 
+            id="event-email" 
+            v-model="eventEmail" 
+            type="email"
+            placeholder="youremail@example.com" 
           />
         </div>
         
         <div class="form-group">
           <label for="event-description">
-            <i class="fas fa-align-left"></i> Notes
+            <i class="fas fa-phone"></i> Contact Number <span class="optional-label">(optional)</span>
           </label>
-          <textarea 
+          <input 
             id="event-description" 
-            v-model="eventDescription" 
-            placeholder="Any special requests or instructions"
-            rows="3"
-          ></textarea>
+            v-model="eventDescription"
+            type="tel" 
+            placeholder="Your contact number"
+          />
         </div>
         
         <div class="date-time-container">
@@ -387,7 +466,15 @@ function goToNextWeek() {
             <label for="event-date">
               <i class="fas fa-calendar-day"></i> Date
             </label>
-            <input id="event-date" type="date" v-model="eventDate" required />
+            <!-- Fix the date input for better cross-browser compatibility -->
+            <input 
+              id="event-date" 
+              type="date" 
+              v-model="eventDate" 
+              required 
+              class="date-picker"
+              @focus="focusDateInput"
+            />
           </div>
           
           <div class="form-group time-group" v-if="selectedActivities.length === 0 && availableSlots.length > 0">
@@ -558,9 +645,42 @@ function goToNextWeek() {
   min-width: 0;
 }
 
+input[type="date"] {
+  position: relative;
+  padding: 0.75rem 1rem;
+  color: var(--text-primary);
+  background-color: var(--background-surface);
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+/* Fix for Firefox */
+input[type="date"]::-moz-calendar-picker-indicator {
+  background: transparent;
+  color: transparent;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  cursor: pointer;
+}
+
+/* Fix for Webkit browsers */
 input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(1);
-  opacity: 0.7;
+  background: transparent;
+  color: transparent;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  cursor: pointer;
 }
 
 select {
@@ -686,6 +806,15 @@ select {
   cursor: not-allowed;
   opacity: 0.7;
   transform: none;
+}
+
+/* Add styling for the optional label */
+.optional-label {
+  font-size: 0.8rem;
+  opacity: 0.7;
+  font-weight: 400;
+  font-style: italic;
+  margin-left: 4px;
 }
 
 @media (max-width: 576px) {

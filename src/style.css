@@ -3,42 +3,42 @@
   line-height: 1.6;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: #E0E0E0;
-  background-color: #2D2D2D;
+  color-scheme: light;
+  color: #333333;
+  background-color: #f8f9fa;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  /* New salon color palette */
-  --background-main: #2D2D2D;
-  --background-card: #333333;
-  --background-surface: #3D3D3D;
+  /* Light salon color palette */
+  --background-main: #f8f9fa;
+  --background-card: #ffffff;
+  --background-surface: #f1f5f9;
   
-  --primary-color: #FF6F61;
-  --primary-hover: #D5544A;
-  --secondary-color: #D1A7E0;
-  --secondary-hover: #A56B9A;
-  --accent-color: #D4AF37;
-  --accent-hover: #B89830;
+  --primary-color: #e74c3c;
+  --primary-hover: #c0392b;
+  --secondary-color: #9b59b6;
+  --secondary-hover: #8e44ad;
+  --accent-color: #f39c12;
+  --accent-hover: #d35400;
   
-  --text-primary: #E0E0E0;
-  --text-secondary: #CCCCCC;
-  --text-heading: #FFFFFF;
-  --text-muted: #A3C1D1;
+  --text-primary: #333333;
+  --text-secondary: #666666;
+  --text-heading: #222222;
+  --text-muted: #7f8c8d;
   
-  --border-color: #585858;
-  --divider-color: #444444;
+  --border-color: #dfe4ea;
+  --divider-color: #ecf0f1;
   
-  --success-color: #4CAF50;
-  --warning-color: #FFC107;
-  --danger-color: #F44336;
+  --success-color: #2ecc71;
+  --warning-color: #f1c40f;
+  --danger-color: #e74c3c;
   
-  --shadow-color: rgba(0, 0, 0, 0.25);
-  --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  --card-hover-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+  --shadow-color: rgba(0, 0, 0, 0.08);
+  --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  --card-hover-shadow: 0 10px 15px rgba(0, 0, 0, 0.08);
   --transition-speed: 0.3s;
 }
 
@@ -171,7 +171,7 @@ label {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--background-card);
+  background: var(--background-surface);
   border-radius: 4px;
 }
 
@@ -189,16 +189,4 @@ label {
   margin: 0 auto;
   padding: 2rem;
   text-align: center;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    --background-color: #f8fafc;
-    --card-background: #ffffff;
-    --surface-color: #f1f5f9;
-    --text-color: #0f172a;
-    --text-muted: #64748b;
-    --border-color: #cbd5e1;
-  }
 }

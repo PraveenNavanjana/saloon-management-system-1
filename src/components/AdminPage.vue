@@ -28,66 +28,104 @@
       </div>
     </div>
     
-    <div v-else class="admin-dashboard">
+    <div v-else class="admin-dashboard full-width">
       <div class="calendar-section">
-        <h3>All Bookings Calendar</h3>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-          <button @click="goToPrevWeek" style="background:#23293a; color:#fff; border:none; border-radius:4px; padding:0.5rem 1rem;">&lt; Prev Week</button>
-          <span style="color:#90caf9; font-weight:600;">Week of {{ getCurrentWeekDates()[0].toLocaleDateString() }}</span>
-          <button @click="goToNextWeek" style="background:#23293a; color:#fff; border:none; border-radius:4px; padding:0.5rem 1rem;">Next Week &gt;</button>
-        </div>
-        <div v-if="loading">Loading bookings...</div>
+        <div v-if="loading" class="loading-indicator">Loading bookings...</div>
         <div v-else>
           <div v-if="bookings.length === 0" class="empty-calendar">No bookings found.</div>
-          <div v-else class="google-calendar-week">
-            <div class="calendar-header">
-              <div class="calendar-cell time-header"></div>
-              <div v-for="day in weekDays" :key="day" class="calendar-cell day-header">{{ day }}</div>
-            </div>
-            <div v-for="slot in slots" :key="slot" class="calendar-row">
-              <div class="calendar-cell time-header" :class="{ 'current-time': slot === getCurrentTime().slice(0,5) }">
-                {{ slot }}
-                <span v-if="slot === getCurrentTime().slice(0,5)" class="current-time-indicator">&larr; Now</span>
+          <BookingCalendar 
+            v-else 
+            :bookings="bookings" 
+            @booking-clicked="openEventModal" 
+            @prev-week="calendarWeekOffset--" 
+            @next-week="calendarWeekOffset++" 
+          />
+        </div>
+      </div>
+    </div>
+    
+    <div v-if="showEventModal" class="event-modal-overlay" @click.self="closeEventModal">
+      <div class="event-modal">
+        <h3>Edit Booking</h3>
+        
+        <div class="customer-info-section">
+          <h4><i class="fas fa-user"></i> Customer Information</h4>
+          
+          <div class="form-field">
+            <label>Name:</label>
+            <input v-model="modalEvent.title" placeholder="Customer Name" />
+          </div>
+          
+          <div class="form-field">
+            <label>Contact Number:</label>
+            <input type="tel" v-model="modalEvent.description" placeholder="Contact Number" />
+          </div>
+          
+          <div class="form-field">
+            <label>Email:</label>
+            <input type="email" v-model="modalEvent.email" placeholder="Email Address" />
+          </div>
+        </div>
+        
+        <div class="appointment-details-section">
+          <h4><i class="fas fa-calendar-alt"></i> Appointment Details</h4>
+          
+          <div class="form-field">
+            <label>Date:</label>
+            <input v-model="modalEvent.date" type="date" />
+          </div>
+          
+          <div class="activities-section">
+            <h4><i class="fas fa-list"></i> Services</h4>
+            
+            <div v-for="(act, idx) in modalEvent.activities" :key="idx" class="activity-edit-row">
+              <div class="activity-main-info">
+                <div class="activity-field">
+                  <label>Service:</label>
+                  <input v-model="act.activity" placeholder="Activity" />
+                </div>
+                
+                <div class="activity-time">
+                  <label>Time:</label>
+                  <div class="time-inputs">
+                    <input v-model="act.startHour" class="time-input" /> :
+                    <input v-model="act.startMinute" class="time-input" /> -
+                    <input v-model="act.endHour" class="time-input" /> :
+                    <input v-model="act.endMinute" class="time-input" />
+                  </div>
+                </div>
               </div>
-              <div v-for="day in weekDays" :key="day + '-' + slot" class="calendar-cell">
-                <div v-for="event in getEventsForDayAndSlot(day, slot)" :key="event.id + '-' + slot" class="calendar-event-block" @click="openEventModal(event)">
-                  <div class="event-title">{{ event.title }}</div>
-                  <div class="event-description">{{ event.description }}</div>
-                  <ul class="event-activities">
-                    <li v-for="(act, idx) in event.activities" :key="idx">
-                      <span class="activity-name">{{ act.activity }}</span>
-                      <span class="activity-time">{{ act.startHour }}:{{ act.startMinute }} - {{ act.endHour }}:{{ act.endMinute }}</span>
-                      <span v-if="act.barber" style="color:#42b983; margin-left:1rem;">Barber: {{ act.barber }}</span>
-                    </li>
-                  </ul>
+              
+              <div class="barber-section">
+                <label>Barber:</label>
+                <div class="barber-select-container">
+                  <select v-model="act.barber" @change="handleBarberChange(act)">
+                    <option v-for="barber in availableBarbers" :key="barber.name" :value="barber.name">{{ barber.name }}</option>
+                    <option v-if="act.barber && !availableBarbers.some(b => b.name === act.barber)" :value="act.barber">{{ act.barber }} (add new)</option>
+                  </select>
+                  <input 
+                    v-if="act.barber && !availableBarbers.some(b => b.name === act.barber)" 
+                    v-model="act.barber" 
+                    placeholder="New barber name" 
+                    class="new-barber-input"
+                    @blur="addNewBarber(act.barber)" 
+                  />
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
-    <div v-if="showEventModal" class="event-modal-overlay" @click.self="closeEventModal">
-      <div class="event-modal">
-        <h3>Edit Booking</h3>
-        <label>Title:<input v-model="modalEvent.title" /></label>
-        <label>Description:<textarea v-model="modalEvent.description"></textarea></label>
-        <label>Date:<input v-model="modalEvent.date" type="date" /></label>
-        <div v-for="(act, idx) in modalEvent.activities" :key="idx" class="modal-activity-edit">
-          <input v-model="act.activity" placeholder="Activity" />
-          <input v-model="act.startHour" style="width:40px;" />:<input v-model="act.startMinute" style="width:40px;" />
-          -
-          <input v-model="act.endHour" style="width:40px;" />:<input v-model="act.endMinute" style="width:40px;" />
-          <select v-model="act.barber" style="margin-left:0.5rem;" @change="handleBarberChange(act)">
-            <option v-for="barber in availableBarbers" :key="barber.name" :value="barber.name">{{ barber.name }}</option>
-            <option v-if="act.barber && !availableBarbers.some(b => b.name === act.barber)" :value="act.barber">{{ act.barber }} (add new)</option>
-          </select>
-          <input v-if="act.barber && !availableBarbers.some(b => b.name === act.barber)" v-model="act.barber" placeholder="New barber name" style="margin-left:0.5rem; width:120px;" @blur="addNewBarber(act.barber)" />
-        </div>
+        
         <div class="modal-actions">
-          <button @click="saveEventEdits">Save</button>
-          <button @click="deleteEvent(modalEvent.id)" style="background:#c00;">Delete</button>
-          <button @click="closeEventModal">Cancel</button>
+          <button @click="saveEventEdits" class="save-btn">
+            <i class="fas fa-save"></i> Save
+          </button>
+          <button @click="deleteEvent(modalEvent.id)" class="delete-btn">
+            <i class="fas fa-trash"></i> Delete
+          </button>
+          <button @click="closeEventModal" class="cancel-btn">
+            <i class="fas fa-times"></i> Cancel
+          </button>
         </div>
       </div>
     </div>
@@ -95,11 +133,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { getFirestore, collection, getDocs, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore'
 import { initializeApp } from 'firebase/app'
 import { useRouter } from 'vue-router'
 import firebaseConfig from '../firebaseConfig'
+import BookingCalendar from './BookingCalendar.vue'
 
 const app = initializeApp(firebaseConfig)
 const db = getFirestore(app)
@@ -145,27 +184,8 @@ async function loadBarbers() {
 
 const availableBarbers = computed(() => adminBarbers.value.filter(b => b.available))
 
+// Keep the calendarWeekOffset for other components to use
 const calendarWeekOffset = ref(0)
-
-function getCurrentWeekDates() {
-  const today = new Date()
-  const startOfWeek = new Date(today)
-  startOfWeek.setDate(today.getDate() - today.getDay() + (calendarWeekOffset.value * 7))
-  const weekDates = []
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(startOfWeek)
-    d.setDate(startOfWeek.getDate() + i)
-    weekDates.push(d)
-  }
-  return weekDates
-}
-
-function goToPrevWeek() {
-  calendarWeekOffset.value--
-}
-function goToNextWeek() {
-  calendarWeekOffset.value++
-}
 
 let refreshInterval = null
 
@@ -218,74 +238,6 @@ async function loadAdminSettings() {
 const ADMIN_USERNAME = 'admin'
 const ADMIN_PASSWORD = 'admin123' // For demo only. Use env vars in production.
 
-// Week days and hours for calendar
-const weekDays = [
-  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
-]
-
-// 30-min slots for calendar (dynamic from openTime to closeTime)
-function getSlots() {
-  const [openHour, openMinute] = openTime.value.split(':').map(Number);
-  const [closeHour, closeMinute] = closeTime.value.split(':').map(Number);
-  const slots = [];
-  let h = openHour, m = openMinute;
-  while (h < closeHour || (h === closeHour && m < closeMinute)) {
-    slots.push(h.toString().padStart(2, '0') + ':' + m.toString().padStart(2, '0'));
-    m += 30;
-    if (m >= 60) { h++; m = 0; }
-  }
-  return slots;
-}
-const slots = getSlots();
-
-// Helper: get current time in HH:mm format
-function getCurrentTime() {
-  const now = new Date();
-  const h = now.getHours().toString().padStart(2, '0');
-  const m = now.getMinutes().toString().padStart(2, '0');
-  return `${h}:${m}`;
-}
-
-// Helper: get events for a given day and hour
-function getEventsForDayAndHour(day, hour) {
-  // Find the date for this week day
-  const today = new Date()
-  const startOfWeek = new Date(today)
-  startOfWeek.setDate(today.getDate() - today.getDay())
-  const dayIdx = weekDays.indexOf(day)
-  const date = new Date(startOfWeek)
-  date.setDate(startOfWeek.getDate() + dayIdx)
-  const dateStr = date.toISOString().slice(0, 10)
-  // Return events for this date and hour
-  return bookings.value.filter(event => {
-    if (event.date !== dateStr) return false
-    // Check if any activity overlaps with this hour
-    return event.activities.some(act => {
-      const actStart = parseInt(act.startHour)
-      return actStart === parseInt(hour)
-    })
-  })
-}
-
-// Helper: get events for a given day and slot
-function getEventsForDayAndSlot(day, slot) {
-  // Use week offset for correct week
-  const weekDates = getCurrentWeekDates()
-  const dayIdx = weekDays.indexOf(day)
-  const dateStr = weekDates[dayIdx].toISOString().slice(0, 10)
-  const [slotHour, slotMinute] = slot.split(':');
-  return bookings.value.filter(event => {
-    if (event.date !== dateStr) return false;
-    return event.activities.some(act => {
-      const actStart = parseInt(act.startHour) * 60 + parseInt(act.startMinute);
-      const actEnd = parseInt(act.endHour) * 60 + parseInt(act.endMinute);
-      const slotStart = parseInt(slotHour) * 60 + parseInt(slotMinute);
-      const slotEnd = slotStart + 30;
-      return actStart < slotEnd && actEnd > slotStart;
-    });
-  });
-}
-
 onMounted(() => {
   if (localStorage.getItem('adminLoggedIn') === 'true') {
     isLoggedIn.value = true
@@ -319,16 +271,53 @@ function logout() {
   router.push('/')
 }
 
+// Improved fetchBookings function to ensure consistent date format
 async function fetchBookings() {
-  loading.value = true
-  const querySnapshot = await getDocs(collection(db, 'events'))
-  bookings.value = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-  loading.value = false
+  loading.value = true;
+  try {
+    const querySnapshot = await getDocs(collection(db, 'events'));
+    // Process each booking to ensure consistent date format
+    bookings.value = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      // Ensure date is in YYYY-MM-DD format
+      let formattedDate = data.date;
+      if (formattedDate) {
+        // Try to standardize the date format if needed
+        try {
+          const dateObj = new Date(formattedDate);
+          if (!isNaN(dateObj.getTime())) {
+            formattedDate = dateObj.toISOString().split('T')[0];
+          }
+        } catch (e) {
+          console.error("Error formatting date:", e);
+        }
+      }
+      
+      return { 
+        id: doc.id, 
+        ...data,
+        date: formattedDate 
+      };
+    });
+    
+    console.log('Fetched bookings:', bookings.value.length);
+  } catch (error) {
+    console.error('Error fetching bookings:', error);
+  } finally {
+    loading.value = false;
+  }
 }
 
+// Add a watch to refresh bookings when week changes
+watch(calendarWeekOffset, () => {
+  if (isLoggedIn.value) fetchBookings();
+});
+
+// Handle booking details display
 function openEventModal(event) {
-  modalEvent.value = JSON.parse(JSON.stringify(event))
-  showEventModal.value = true
+  modalEvent.value = JSON.parse(JSON.stringify(event));
+  console.log('Opening booking details:', modalEvent.value);
+  showEventModal.value = true;
 }
 
 function closeEventModal() {
@@ -342,6 +331,7 @@ async function saveEventEdits() {
   await updateDoc(eventRef, {
     title: modalEvent.value.title,
     description: modalEvent.value.description,
+    email: modalEvent.value.email, // Include the email field
     date: modalEvent.value.date,
     activities: modalEvent.value.activities
   })
@@ -368,6 +358,12 @@ function addNewBarber(name) {
   adminBarbers.value.push({ name, available: true });
   localStorage.setItem('saloonBarbers', JSON.stringify(adminBarbers.value));
 }
+
+// Removing fullscreen toggle functionality since calendar is now always full screen
+// const isFullScreenCalendar = ref(false)
+// function toggleFullScreen() {
+//   isFullScreenCalendar.value = !isFullScreenCalendar.value
+// }
 
 onUnmounted(() => {
   stopAutoRefresh()
@@ -451,185 +447,158 @@ onUnmounted(() => {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  padding: 1rem;
+  padding: 2rem;
+  background: #f8f9fa;
 }
 
 .admin-login {
   background: var(--background-card);
-  border-radius: 8px;
-  padding: 2rem;
+  border-radius: 12px;
+  padding: 3rem;
   width: 100%;
-  max-width: 400px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  max-width: 500px;  /* Increased from 400px */
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
   text-align: center;
+  border: 1px solid var(--border-color);
+  box-sizing: border-box;
 }
 
 .admin-login h2 {
   margin-top: 0;
-  margin-bottom: 1.5rem;
+  margin-bottom: 2.5rem;  /* Increased from 2rem */
   color: var(--text-heading);
-  font-size: 1.75rem;
+  font-size: 2rem;  /* Increased from 1.75rem */
+  position: relative;
+  display: inline-block;
+}
+
+.admin-login h2:after {
+  content: '';
+  position: absolute;
+  width: 60%;  /* Increased from 50% */
+  height: 4px;  /* Increased from 3px */
+  background: var(--primary-color);
+  bottom: -12px;  /* Adjusted from -10px */
+  left: 20%;
+  border-radius: 4px;
 }
 
 .admin-login .form-group {
-  margin-bottom: 1.25rem;
+  margin-bottom: 2rem;  /* Increased from 1.5rem */
   text-align: left;
 }
 
 .admin-login label {
   display: block;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;  /* Increased from 0.5rem */
   font-weight: 500;
   color: var(--text-primary);
+  font-size: 1.1rem;  /* Increased from default */
 }
 
 .admin-login input {
   width: 100%;
-  padding: 0.75rem 1rem;
-  border-radius: 6px;
+  padding: 1rem 1.25rem;  /* Increased from 0.75rem 1rem */
+  border-radius: 8px;  /* Increased from 6px */
   border: 1px solid var(--border-color);
   background: var(--background-surface);
   color: var(--text-primary);
-  font-size: 1rem;
+  font-size: 1.1rem;  /* Increased from 1rem */
   transition: all 0.2s ease;
+  box-sizing: border-box;
+  max-width: 100%;
 }
 
 .admin-login input:focus {
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(255, 111, 97, 0.2);
+  box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.15);  /* Slightly more visible */
   outline: none;
 }
 
 .login-btn {
   background: var(--primary-color);
-  color: var(--text-heading);
+  color: white;
   border: none;
   width: 100%;
-  padding: 0.75rem;
-  border-radius: 6px;
-  font-size: 1rem;
+  padding: 1rem;  /* Increased from 0.85rem */
+  border-radius: 8px;  /* Increased from 6px */
+  font-size: 1.1rem;  /* Increased from 1rem */
   font-weight: 600;
   cursor: pointer;
-  margin-top: 0.5rem;
-  transition: all 0.2s ease;
+  margin-top: 1.5rem;  /* Increased from 1rem */
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);  /* Increased from 0 4px 6px rgba(0, 0, 0, 0.1) */
 }
 
 .login-btn:hover {
   background: var(--primary-hover);
-  transform: translateY(-2px);
+  transform: translateY(-3px);  /* Increased from -2px */
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);  /* Increased from 0 6px 12px rgba(0, 0, 0, 0.15) */
+}
+
+.login-btn:active {
+  transform: translateY(0);
 }
 
 .error {
   color: var(--danger-color);
-  margin-top: 1rem;
+  margin-top: 1.5rem;  /* Increased from 1rem */
   text-align: center;
-  font-size: 0.9rem;
+  font-size: 1rem;  /* Increased from 0.9rem */
+  padding: 0.75rem;  /* Increased from 0.5rem */
+  background-color: rgba(231, 76, 60, 0.1);
+  border-radius: 6px;  /* Increased from 4px */
 }
 
-/* Keep existing styles for admin dashboard */
+/* Updated admin dashboard styles - light theme */
 .admin-dashboard {
-  max-width: 1200px;
-  margin: 4.5rem auto 0 auto;
-  background: var(--background-card);
-  border-radius: 8px;
-  padding: 2rem;
-  color: var(--text-primary);
-  box-shadow: var(--card-shadow);
+  width: 100%;
+  max-width: 100%;
+  margin: 64px 0 0;
+  padding: 0;
+  background: #ffffff;
+  border-radius: 0;
+  box-shadow: none;
 }
 
-.calendar-section h3 {
-  color: var(--text-heading);
-  margin-bottom: 1.5rem;
+.admin-dashboard.full-width {
+  max-width: 100%;
+  width: 100%;
+  margin: 4rem 0 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
 }
 
+.calendar-section {
+  height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Remove calendar header controls since we're using full-screen mode */
+.calendar-header-controls {
+  display: none;
+}
+
+/* Loading indicator and empty calendar message styling - light theme */
+.loading-indicator,
 .empty-calendar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 0;
   color: var(--text-muted);
   font-style: italic;
-  padding: 1rem 0;
-}
-
-.google-calendar-week {
-  display: grid;
-  grid-template-columns: 80px repeat(7, 1fr);
-  border: 1px solid var(--border-color);
-  background: var(--background-surface);
-  border-radius: 8px;
-  overflow-x: auto;
-}
-
-.calendar-cell {
-  border-bottom: 1px solid var(--border-color);
-  border-right: 1px solid var(--border-color);
-  min-height: 48px;
-  padding: 2px 4px;
-  background: var(--background-surface);
-}
-
-.time-header {
-  background: var(--background-card);
-  color: var(--text-muted);
-  font-weight: bold;
-  text-align: right;
-  border-right: 1px solid var(--border-color);
-}
-
-.day-header {
-  background: var(--background-card);
-  color: var(--primary-color);
-  font-weight: bold;
-  text-align: center;
-  border-bottom: 2px solid var(--primary-color);
-}
-
-.calendar-event-block {
-  background: var(--primary-color);
-  color: var(--text-heading);
-  border-radius: 4px;
-  margin: 2px 0;
-  padding: 2px 6px;
-  font-size: 0.95em;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.calendar-event-block:hover {
-  background: var(--primary-hover);
-  transform: translateY(-2px);
-}
-
-.event-title {
-  font-weight: bold;
-}
-
-.event-description {
-  font-size: 0.9rem;
-}
-
-.event-activities {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.event-activities li {
-  margin-bottom: 0.25rem;
-}
-
-.activity-name {
-  font-weight: 500;
-  color: var(--accent-color);
-}
-
-.activity-time {
-  margin-left: 0.5rem;
-  color: var(--text-secondary);
+  height: calc(100vh - 64px);
+  background: #ffffff;
 }
 
 .event-modal-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.5);
   z-index: 2000;
   display: flex;
   align-items: center;
@@ -639,93 +608,204 @@ onUnmounted(() => {
 .event-modal {
   background: var(--background-card);
   color: var(--text-primary);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 2rem;
-  min-width: 350px;
+  width: 650px;
   max-width: 95vw;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
 }
 
 .event-modal h3 {
   margin-top: 0;
+  margin-bottom: 1.5rem;
   color: var(--primary-color);
+  font-size: 1.5rem;
+  position: relative;
+  display: inline-block;
 }
 
-.event-modal label {
-  display: block;
-  margin: 1rem 0 0.5rem 0;
-  color: var(--text-primary);
+.event-modal h3:after {
+  content: '';
+  position: absolute;
+  width: 50%;
+  height: 3px;
+  background: var(--primary-color);
+  bottom: -8px;
+  left: 25%;
+  border-radius: 2px;
 }
 
-.event-modal input, .event-modal textarea {
-  width: 100%;
-  margin-bottom: 0.5rem;
-  padding: 0.4rem;
-  border-radius: 4px;
-  border: 1px solid var(--border-color);
+.customer-info-section,
+.appointment-details-section,
+.activities-section {
   background: var(--background-surface);
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--border-color);
+}
+
+.customer-info-section h4,
+.appointment-details-section h4,
+.activities-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: var(--text-heading);
+  font-size: 1.1rem;
+}
+
+.form-field {
+  margin-bottom: 1rem;
+}
+
+.form-field label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.form-field input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--background-card);
   color: var(--text-primary);
   font-size: 1rem;
+  box-sizing: border-box;
 }
 
-.modal-activity-edit {
+.activity-edit-row {
+  background: var(--background-card);
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border-color);
+}
+
+.activity-main-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.activity-time {
+  display: flex;
+  flex-direction: column;
+}
+
+.time-inputs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.time-input {
+  width: 40px;
+  padding: 0.5rem;
+  text-align: center;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+}
+
+.barber-section {
+  margin-top: 0.5rem;
+}
+
+.barber-select-container {
   display: flex;
   gap: 0.5rem;
   align-items: center;
-  margin-bottom: 0.5rem;
+}
+
+.barber-select-container select {
+  flex-grow: 1;
+  padding: 0.6rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background: var(--background-card);
+}
+
+.new-barber-input {
+  flex-basis: 150px;
+  padding: 0.6rem;
+  border-radius: 4px;
+  border: 1px solid var(--primary-color);
+  background: var(--background-card);
 }
 
 .modal-actions {
   display: flex;
-  gap: 1rem;
-  margin-top: 1.5rem;
+  gap: 0.75rem;
+  margin-top: 2rem;
+  justify-content: flex-end;
 }
 
 .modal-actions button {
-  background: var(--primary-color);
-  color: var(--text-heading);
-  border: none;
-  padding: 0.5rem 1.5rem;
-  border-radius: 4px;
+  padding: 0.75rem 1.25rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 500;
   cursor: pointer;
-  font-size: 1rem;
-  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
 }
 
-.modal-actions button[style*='background:#c00'] {
-  background: var(--danger-color) !important;
+.save-btn {
+  background: var(--primary-color);
+  color: white;
+  border: none;
 }
 
-.current-time {
-  background: var(--success-color) !important;
-  color: var(--text-heading) !important;
-  font-weight: bold;
-  position: relative;
+.save-btn:hover {
+  background: var(--primary-hover);
+  transform: translateY(-2px);
 }
 
-.current-time-indicator {
-  color: var(--accent-color);
-  font-size: 0.95em;
-  margin-left: 0.5em;
+.delete-btn {
+  background: var(--danger-color);
+  color: white;
+  border: none;
 }
 
-/* Add responsive styles for smaller screens */
-@media (max-width: 576px) {
-  .admin-navbar {
-    padding: 0 1rem;
+.delete-btn:hover {
+  background: #d32f2f;
+  transform: translateY(-2px);
+}
+
+.cancel-btn {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.cancel-btn:hover {
+  background: var(--background-surface);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .activity-main-info {
+    grid-template-columns: 1fr;
   }
   
-  .navbar-title {
-    font-size: 1.2rem;
+  .modal-actions {
+    flex-direction: column;
   }
   
-  .navbar-links {
-    gap: 0.5rem;
-  }
-  
-  .nav-link, .logout-btn {
-    padding: 0.3rem 0.5rem;
-    font-size: 0.85rem;
+  .modal-actions button {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>
