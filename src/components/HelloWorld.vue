@@ -53,20 +53,16 @@ const selectedStartTime = ref('')
 const currency = ref('₹')
 
 // Fetch admin settings (open/close time, activities) from Firestore
-const adminSettings = ref({ openTime: '09:00', closeTime: '20:00', activities: [
- 
-] })
+const adminSettings = ref({ openTime: '09:00', closeTime: '20:00', activities: [] })
 
 async function fetchAdminSettings() {
   const docSnap = await getDocs(collection(db, 'settings'))
   const settingsDoc = docSnap.docs.find(d => d.id === 'saloon')
   if (settingsDoc) {
     adminSettings.value = settingsDoc.data()
-    // Set currency from database if present
     if (settingsDoc.data().currency) {
       currency.value = settingsDoc.data().currency
     }
-    // Set barbers from database if present
     if (settingsDoc.data().barbers) {
       barberOptions.value = [...settingsDoc.data().barbers]
     }
@@ -76,71 +72,91 @@ async function fetchAdminSettings() {
 // Use admin activities and open/close time in the form
 watchEffect(() => {
   activityOptions.value = [...adminSettings.value.activities]
-  // Always use barbers from adminSettings (Firestore)
   barberOptions.value = adminSettings.value.barbers ? [...adminSettings.value.barbers] : []
-  // Update total price when activities or selection changes
   totalPrice.value = selectedActivities.value.reduce((sum, act) => {
     const found = activityOptions.value.find(opt => opt.name === act.activity)
     return sum + (found?.price || 0)
   }, 0)
 })
 
-// Helper to get available start times for the first activity
+// Helper to get available start times for the first activity, considering barber availability
 async function getAvailableStartTimes() {
-  if (!eventDate.value) return [];
-  // Fetch events for the selected date from Firestore
-  const querySnapshot = await getDocs(collection(db, 'events'));
+  if (!eventDate.value) return []
+  const querySnapshot = await getDocs(collection(db, 'events'))
   const eventsOnDate = querySnapshot.docs
     .map(doc => doc.data())
-    .filter(e => e.date === eventDate.value);
-  // Build a set of occupied time slots (in minutes since 00:00)
-  const occupied = new Set();
+    .filter(e => e.date === eventDate.value)
+  const occupied = new Set()
   eventsOnDate.forEach(event => {
     event.activities.forEach(act => {
-      const start = parseInt(act.startHour) * 60 + parseInt(act.startMinute);
-      const end = parseInt(act.endHour) * 60 + parseInt(act.endMinute);
-      for (let t = start; t < end; t++) occupied.add(t);
-    });
-  });
-  // Generate all possible 30-min slots from openTime to closeTime
-  const slots = [];
-  const duration = activityOptions.value.find(opt => opt.name === activitySelection.value)?.duration || 30;
-  const [openHour, openMinute] = adminSettings.value.openTime.split(':').map(Number);
-  const [closeHour, closeMinute] = adminSettings.value.closeTime.split(':').map(Number);
-  let h = openHour, m = openMinute;
+      const start = parseInt(act.startHour) * 60 + parseInt(act.startMinute)
+      const end = parseInt(act.endHour) * 60 + parseInt(act.endMinute)
+      for (let t = start; t < end; t++) occupied.add(t)
+    })
+  })
+  const slots = []
+  const duration = activityOptions.value.find(opt => opt.name === activitySelection.value)?.duration || 30
+  const [openHour, openMinute] = adminSettings.value.openTime.split(':').map(Number)
+  const [closeHour, closeMinute] = adminSettings.value.closeTime.split(':').map(Number)
+  let h = openHour, m = openMinute
   while (h < closeHour || (h === closeHour && m < closeMinute)) {
-    const t = h * 60 + m;
-    // Check if this slot is free for the duration of the first activity
-    let isFree = true;
-    for (let d = 0; d < duration; d++) {
-      if (occupied.has(t + d)) { isFree = false; break; }
+    const t = h * 60 + m
+    // For this slot, check if ANY barber is available for the selected activity
+    const eligibleBarbers = barberOptions.value.filter(barber =>
+      barber.activities.some(act => act.name === activitySelection.value)
+    )
+    let barberAvailable = false
+    for (const barber of eligibleBarbers) {
+      const barberAct = barber.activities.find(act => act.name === activitySelection.value)
+      if (!barberAct) continue
+      // Check if this barber is free for the full duration at this slot
+      const slotStart = t
+      const slotEnd = t + duration
+      // Check Firestore events
+      const isBusyInEvents = eventsOnDate.some(event =>
+        event.activities.some(act =>
+          act.barber === barber.name &&
+          (parseInt(act.startHour) * 60 + parseInt(act.startMinute)) < slotEnd &&
+          (parseInt(act.endHour) * 60 + parseInt(act.endMinute)) > slotStart
+        )
+      )
+      // Check current session's selectedActivities
+      const isBusyInSession = selectedActivities.value.some(act =>
+        act.barber === barber.name &&
+        (parseInt(act.startHour) * 60 + parseInt(act.startMinute)) < slotEnd &&
+        (parseInt(act.endHour) * 60 + parseInt(act.endMinute)) > slotStart
+      )
+      if (!isBusyInEvents && !isBusyInSession) {
+        barberAvailable = true
+        break
+      }
     }
-    if (isFree) slots.push({ hour: h.toString().padStart(2, '0'), minute: m.toString().padStart(2, '0') });
-    m += 30;
-    if (m >= 60) { h++; m = 0; }
+    if (barberAvailable) {
+      slots.push({ hour: h.toString().padStart(2, '0'), minute: m.toString().padStart(2, '0') })
+    }
+    m += 30
+    if (m >= 60) { h++; m = 0 }
   }
-  // If no slots, return empty array
-  return slots;
+  return slots
 }
 
 // Watch for eventDate and activitySelection changes and update available slots
 watch([eventDate, activitySelection], async () => {
-  availableSlots.value = await getAvailableStartTimes();
+  availableSlots.value = await getAvailableStartTimes()
   if (availableSlots.value.length > 0) {
-    // Always set the next available slot as the default
-    const firstSlot = availableSlots.value[0];
-    selectedStartTime.value = `${firstSlot.hour}:${firstSlot.minute}`;
-    userStartHour.value = firstSlot.hour;
-    userStartMinute.value = firstSlot.minute;
+    const firstSlot = availableSlots.value[0]
+    selectedStartTime.value = `${firstSlot.hour}:${firstSlot.minute}`
+    userStartHour.value = firstSlot.hour
+    userStartMinute.value = firstSlot.minute
   } else {
-    selectedStartTime.value = adminSettings.value.openTime;
-    const [openHour, openMinute] = adminSettings.value.openTime.split(':');
-    userStartHour.value = openHour;
-    userStartMinute.value = openMinute;
+    selectedStartTime.value = adminSettings.value.openTime
+    const [openHour, openMinute] = adminSettings.value.openTime.split(':')
+    userStartHour.value = openHour
+    userStartMinute.value = openMinute
   }
-});
+})
 
-// Update selectedStartTime when availableSlots changes
+// Watch availableSlots and update selectedStartTime
 watch(availableSlots, (slots) => {
   if (slots.length > 0) {
     selectedStartTime.value = slots[0].hour + ':' + slots[0].minute
@@ -163,111 +179,83 @@ watch(selectedStartTime, (val) => {
   }
 })
 
-function assignBarber(activity, startHour, startMinute, endHour, endMinute, date) {
-  // Find all barbers who can do this activity
-  const eligibleBarbers = barberOptions.value.filter(barber =>
-    barber.activities.some(act => act.name === activity)
-  )
-  if (eligibleBarbers.length === 0) return null
-  // Fetch all events for this date
-  const eventsOnDate = localEvents.value.filter(e => e.date === date)
-  // Build a map of barberName -> their occupied time slots
-  const barberOccupied = {}
-  for (const barber of eligibleBarbers) {
-    barberOccupied[barber.name] = []
-  }
-  for (const event of eventsOnDate) {
-    if (!event.activities) continue
-    for (const act of event.activities) {
-      if (barberOccupied[act.barber]) {
-        const actStart = parseInt(act.startHour) * 60 + parseInt(act.startMinute)
-        const actEnd = parseInt(act.endHour) * 60 + parseInt(act.endMinute)
-        barberOccupied[act.barber].push([actStart, actEnd])
-      }
-    }
-  }
-  // Find a free barber
-  const newStart = parseInt(startHour) * 60 + parseInt(startMinute)
-  const newEnd = parseInt(endHour) * 60 + parseInt(endMinute)
-  for (const barber of eligibleBarbers) {
-    const slots = barberOccupied[barber.name]
-    const overlap = slots.some(([s, e]) => newStart < e && newEnd > s)
-    if (!overlap) return barber.name
-  }
-  return null // No available barber
-}
-
-// In addActivity, use the global price and assign a barber with the correct duration for the selected activity
+// Modified addActivity to check all eligible barbers
 function addActivity() {
   if (!activitySelection.value) {
-    alert('Please select an activity.');
-    return;
+    alert('Please select an activity.')
+    return
   }
-  // Get the duration for the selected activity from the first eligible barber (all barbers for this activity should have a duration)
+
+  // Find all eligible barbers for the selected activity
   const eligibleBarbers = barberOptions.value.filter(barber =>
     barber.activities.some(act => act.name === activitySelection.value)
   )
   if (eligibleBarbers.length === 0) {
-    alert('No barber available for this activity.');
-    return;
+    alert('No barber available for this activity.')
+    return
   }
-  // Determine the earliest possible start time (after previous activity, or user-selected start time)
-  let prevEndHour = userStartHour.value, prevEndMinute = userStartMinute.value;
+
+  // Determine the earliest possible start time
+  let prevEndHour = parseInt(userStartHour.value)
+  let prevEndMinute = parseInt(userStartMinute.value)
   if (selectedActivities.value.length > 0) {
-    const last = selectedActivities.value[selectedActivities.value.length - 1];
-    prevEndHour = last.endHour;
-    prevEndMinute = last.endMinute;
+    const last = selectedActivities.value[selectedActivities.value.length - 1]
+    prevEndHour = parseInt(last.endHour)
+    prevEndMinute = parseInt(last.endMinute)
   }
-  // Get close time
-  const [closeHour, closeMinute] = adminSettings.value.closeTime.split(':').map(Number);
-  // Try all eligible barbers and all possible start times (in 30-min increments)
-  let found = false;
-  let assignedBarber = null, assignedStartHour = null, assignedStartMinute = null, assignedEndHour = null, assignedEndMinute = null, duration = null;
-  // Try each barber
+
+  // Try each eligible barber for the same starting time
+  let assignedBarber = null
+  let assignedStartHour = prevEndHour.toString().padStart(2, '0')
+  let assignedStartMinute = prevEndMinute.toString().padStart(2, '0')
+  let assignedEndHour = null
+  let assignedEndMinute = null
+  let duration = null
+  let found = false
+
   for (const barber of eligibleBarbers) {
-    const barberAct = barber.activities.find(act => act.name === activitySelection.value);
-    if (!barberAct) continue;
-    duration = barberAct.duration;
-    // Try all possible start times from prevEndHour:prevEndMinute to closing time
-    let h = parseInt(prevEndHour), m = parseInt(prevEndMinute);
-    while (h < closeHour || (h === closeHour && m <= closeMinute - duration)) {
-      // Calculate end time
-      const start = new Date(`2025-01-01T${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
-      const end = new Date(start.getTime() + duration * 60000);
-      const eHour = end.getHours().toString().padStart(2, '0');
-      const eMinute = end.getMinutes().toString().padStart(2, '0');
-      // Check if this barber is available in Firestore events
-      const isBusyInEvents = localEvents.value.filter(e => e.date === eventDate.value).some(event =>
-        event.activities.some(act => act.barber === barber.name && (
-          (parseInt(act.startHour) * 60 + parseInt(act.startMinute)) < (end.getHours() * 60 + end.getMinutes()) &&
-          (parseInt(act.endHour) * 60 + parseInt(act.endMinute)) > (h * 60 + m)
-        ))
-      );
-      // Check if this barber is available in current session's selectedActivities
-      const isBusyInSession = selectedActivities.value.some(act =>
-        act.barber === barber.name &&
-        ((parseInt(act.startHour) * 60 + parseInt(act.startMinute)) < (end.getHours() * 60 + end.getMinutes()) &&
-         (parseInt(act.endHour) * 60 + parseInt(act.endMinute)) > (h * 60 + m))
-      );
-      if (!isBusyInEvents && !isBusyInSession) {
-        assignedBarber = barber.name;
-        assignedStartHour = h.toString().padStart(2, '0');
-        assignedStartMinute = m.toString().padStart(2, '0');
-        assignedEndHour = eHour;
-        assignedEndMinute = eMinute;
-        found = true;
-        break;
-      }
-      // Increment by 30 minutes
-      m += 30;
-      if (m >= 60) { h++; m = 0; }
+    const barberAct = barber.activities.find(act => act.name === activitySelection.value)
+    if (!barberAct) continue
+    duration = barberAct.duration
+    const start = new Date(`2025-01-01T${assignedStartHour}:${assignedStartMinute}`)
+    const end = new Date(start.getTime() + duration * 60000)
+    const eHour = end.getHours().toString().padStart(2, '0')
+    const eMinute = end.getMinutes().toString().padStart(2, '0')
+    // Check Firestore events for barber availability
+    const isBusyInEvents = localEvents.value
+      .filter(e => e.date === eventDate.value)
+      .some(event =>
+        event.activities.some(act =>
+          act.barber === barber.name &&
+          (
+            (parseInt(act.startHour) * 60 + parseInt(act.startMinute)) < (end.getHours() * 60 + end.getMinutes()) &&
+            (parseInt(act.endHour) * 60 + parseInt(act.endMinute)) > (parseInt(assignedStartHour) * 60 + parseInt(assignedStartMinute))
+          )
+        )
+      )
+    // Check current session's selectedActivities for barber availability
+    const isBusyInSession = selectedActivities.value.some(act =>
+      act.barber === barber.name &&
+      (
+        (parseInt(act.startHour) * 60 + parseInt(act.startMinute)) < (end.getHours() * 60 + end.getMinutes()) &&
+        (parseInt(act.endHour) * 60 + parseInt(act.endMinute)) > (parseInt(assignedStartHour) * 60 + parseInt(assignedStartMinute))
+      )
+    )
+    if (!isBusyInEvents && !isBusyInSession) {
+      assignedBarber = barber.name
+      assignedEndHour = eHour
+      assignedEndMinute = eMinute
+      found = true
+      break
     }
-    if (found) break;
   }
+
   if (!found) {
-    alert('No available barber or time slot for this activity.');
-    return;
+    alert('No available barber for this activity at the selected time slot.')
+    return
   }
+
+  // Add the activity with the assigned barber
   selectedActivities.value.push({
     activity: activitySelection.value,
     startHour: assignedStartHour,
@@ -276,18 +264,17 @@ function addActivity() {
     endMinute: assignedEndMinute,
     barber: assignedBarber,
     duration: duration
-  });
-  activitySelection.value = '';
-  // Update total price
+  })
+
+  activitySelection.value = ''
   totalPrice.value = selectedActivities.value.reduce((sum, act) => {
-    const found = activityOptions.value.find(opt => opt.name === act.activity);
-    return sum + (found?.price || 0);
-  }, 0);
+    const found = activityOptions.value.find(opt => opt.name === act.activity)
+    return sum + (found?.price || 0)
+  }, 0)
 }
 
 function removeActivity(idx) {
   selectedActivities.value.splice(idx, 1)
-  // Update total price
   totalPrice.value = selectedActivities.value.reduce((sum, act) => {
     const found = activityOptions.value.find(opt => opt.name === act.activity)
     return sum + (found?.price || 0)
@@ -299,8 +286,8 @@ const localEvents = ref([])
 
 async function saveEventToFirebase() {
   if (!eventTitle.value || !eventDate.value || selectedActivities.value.length === 0) {
-    alert('Please fill in all required fields and add at least one activity.');
-    return;
+    alert('Please fill in all required fields and add at least one activity.')
+    return
   }
   await addDoc(collection(db, 'events'), {
     title: eventTitle.value,
@@ -571,13 +558,11 @@ function goToNextWeek() {
   min-width: 0;
 }
 
-/* Hide default calendar icon and use custom one */
 input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(1);
   opacity: 0.7;
 }
 
-/* Style for select dropdown */
 select {
   appearance: none;
   background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23E0E0E0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
