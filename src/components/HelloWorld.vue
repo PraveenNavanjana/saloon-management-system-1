@@ -361,197 +361,356 @@ function goToNextWeek() {
 </script>
 
 <template>
-  <form @submit.prevent="saveEventToFirebase" class="event-form" style="margin-top:2rem;max-width:400px;">
-    <h2>Add Event to My Calendar</h2>
-
-     <div style="font-size:1.1em; font-weight:600; color:#42b983; text-align:right; margin-bottom:1rem;">
-      Total Price: {{ currency }} {{ totalPrice }}
-    </div>
-    <div>
-      <label for="event-title">Event Title*:<br />
-        <input id="event-title" v-model="eventTitle" required placeholder="e.g. Haircut Appointment" />
-      </label>
-    </div>
-    <div>
-      <label for="event-description">Event Description:<br />
-        <textarea id="event-description" v-model="eventDescription" placeholder="e.g. Haircut with stylist Jane"></textarea>
-      </label>
-    </div>
-    <div>
-      <label for="event-date">Event Date*:<br />
-        <input id="event-date" type="date" v-model="eventDate" required />
-      </label>
-    </div>
-    <div v-if="selectedActivities.length === 0 && availableSlots.length > 0" style="margin-bottom:1rem;">
-      <label for="start-time-select" style="display:block; margin-bottom:0.25rem;">Start Time*:</label>
-      <select id="start-time-select" v-model="selectedStartTime" style="width:100%;">
-        <option v-for="slot in availableSlots" :key="slot.hour + '-' + slot.minute" :value="slot.hour + ':' + slot.minute">
-          {{ slot.hour }}:{{ slot.minute }}
-        </option>
-      </select>
-    </div>
-    <div style="border:1px solid #333; border-radius:6px; padding:1rem; margin-bottom:1rem; background:#181818;">
-      <label for="activity-select">Activity*:<br /></label>
-      <select id="activity-select" v-model="activitySelection" style="width:100%; padding:0.5rem; border-radius:4px; border:1px solid #ccc; font-size:1rem; margin-bottom:1rem; background:#23293a; color:#fff;">
-        <option value="" disabled>Select Activity</option>
-        <option v-for="opt in activityOptions" :key="opt.name" :value="opt.name" :disabled="selectedActivities.some(a => a.activity === opt.name)">
-          {{ opt.name }} ({{ opt.duration }} min, {{ currency }}{{ opt.price || 0 }})
-        </option>
-      </select>
-      <button type="button" @click="addActivity" :disabled="!activitySelection" style="margin-left:1rem;">Add Activity</button>
-    </div>
-    <div v-for="(act, idx) in selectedActivities" :key="idx" style="border:1px solid #333; border-radius:6px; padding:1rem; margin-bottom:1rem; background:#222;">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem;">
-        <span style="font-weight:600; flex:2;">{{ act.activity }}</span>
-        <span style="color:#ffd54f; font-weight:500; flex:1; text-align:right;">{{ currency }}{{ (activityOptions.find(opt => opt.name === act.activity)?.price) || 0 }}</span>
-        <span style="color:#90caf9; font-weight:500; flex:1; text-align:right;">{{ act.startHour }}:{{ act.startMinute }} - {{ act.endHour }}:{{ act.endMinute }}</span>
-        <span style="color:#42b983; font-weight:500; flex:1; text-align:right;">Barber: {{ act.barber }}</span>
-        <button type="button" @click="removeActivity(idx)" style="background:#c00; color:#fff; border:none; border-radius:4px; padding:0.25rem 0.75rem; cursor:pointer; flex:0 0 auto;">Remove</button>
+  <div class="salon-booking-container">
+    <form @submit.prevent="saveEventToFirebase" class="event-form">
+      <div class="form-header">
+        <h2>Book Your Appointment</h2>
+        <div class="total-price">
+          <i class="fas fa-tag"></i> Total: {{ currency }} {{ totalPrice }}
+        </div>
       </div>
-    </div>
-   
-    <button type="submit" style="margin-top:1rem; background:#1976d2;">Save to My Calendar</button>
-  </form>
-  
+      
+      <div class="form-content">
+        <div class="form-group">
+          <label for="event-title">
+            <i class="fas fa-calendar-alt"></i> Appointment Title
+          </label>
+          <input 
+            id="event-title" 
+            v-model="eventTitle" 
+            required 
+            placeholder="e.g. Haircut Appointment" 
+          />
+        </div>
+        
+        <div class="form-group">
+          <label for="event-description">
+            <i class="fas fa-align-left"></i> Notes
+          </label>
+          <textarea 
+            id="event-description" 
+            v-model="eventDescription" 
+            placeholder="Any special requests or instructions"
+            rows="3"
+          ></textarea>
+        </div>
+        
+        <div class="date-time-container">
+          <div class="form-group date-group">
+            <label for="event-date">
+              <i class="fas fa-calendar-day"></i> Date
+            </label>
+            <input id="event-date" type="date" v-model="eventDate" required />
+          </div>
+          
+          <div class="form-group time-group" v-if="selectedActivities.length === 0 && availableSlots.length > 0">
+            <label for="start-time-select">
+              <i class="fas fa-clock"></i> Start Time
+            </label>
+            <select id="start-time-select" v-model="selectedStartTime">
+              <option v-for="slot in availableSlots" :key="slot.hour + '-' + slot.minute" :value="slot.hour + ':' + slot.minute">
+                {{ slot.hour }}:{{ slot.minute }}
+              </option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="activity-selection-section">
+          <h3><i class="fas fa-list-check"></i> Services</h3>
+          
+          <div class="activity-selection">
+            <label for="activity-select" class="visually-hidden">Select Service</label>
+            <select id="activity-select" v-model="activitySelection">
+              <option value="" disabled>Select Service</option>
+              <option v-for="opt in activityOptions" :key="opt.name" :value="opt.name" :disabled="selectedActivities.some(a => a.activity === opt.name)">
+                {{ opt.name }} ({{ opt.duration }} min, {{ currency }}{{ opt.price || 0 }})
+              </option>
+            </select>
+            
+            <button 
+              type="button" 
+              @click="addActivity" 
+              :disabled="!activitySelection" 
+              class="add-activity-btn"
+            >
+              <i class="fas fa-plus"></i> Add
+            </button>
+          </div>
+        </div>
+        
+        <div class="selected-activities" v-if="selectedActivities.length > 0">
+          <h3><i class="fas fa-check-circle"></i> Selected Services</h3>
+          
+          <div class="activities-list">
+            <div v-for="(act, idx) in selectedActivities" :key="idx" class="activity-card">
+              <div class="activity-header">
+                <span class="activity-name">{{ act.activity }}</span>
+                <span class="activity-price">{{ currency }}{{ (activityOptions.find(opt => opt.name === act.activity)?.price) || 0 }}</span>
+              </div>
+              
+              <div class="activity-details">
+                <div class="activity-detail">
+                  <i class="fas fa-clock"></i>
+                  <span>{{ act.startHour }}:{{ act.startMinute }} - {{ act.endHour }}:{{ act.endMinute }}</span>
+                </div>
+                
+                <div class="activity-detail">
+                  <i class="fas fa-user"></i>
+                  <span>{{ act.barber }}</span>
+                </div>
+              </div>
+              
+              <button type="button" @click="removeActivity(idx)" class="activity-remove-btn">
+                <i class="fas fa-trash-alt"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <button type="submit" class="save-button" :disabled="selectedActivities.length === 0">
+          <i class="fas fa-check"></i> Confirm Booking
+        </button>
+      </div>
+    </form>
+  </div>
 </template>
 
 <style scoped>
-.read-the-docs {
-  color: #888;
-}
-.event-form {
-  background: #000000;
-  border-radius: 8px;
-  padding: 1.5rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-}
-.event-form h2 {
-  margin-top: 0;
-}
-.event-form input,
-.event-form textarea,
-.event-form select {
-  width: 100%;
-  margin-top: 0.25rem;
-  margin-bottom: 1rem;
-  padding: 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 1rem;
-}
-.event-form button {
-  background: #42b983;
-  color: #fff;
-  border: none;
-  padding: 0.5rem 1.5rem;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 1rem;
-  transition: background 0.2s;
-}
-.event-form button:hover {
-  background: #369870;
-}
-.custom-calendar {
-  margin-top: 2.5rem;
-  background: #181c24;
-  border-radius: 10px;
-  padding: 2rem;
-  box-shadow: 0 4px 16px rgba(25, 118, 210, 0.08);
-  color: #fff;
-}
-.custom-calendar h2 {
-  margin-top: 0;
-  color: #90caf9;
-  letter-spacing: 1px;
-}
-.empty-calendar {
-  color: #aaa;
-  font-style: italic;
-  padding: 1rem 0;
-}
-.calendar-event {
-  background: #23293a;
-  border-radius: 8px;
-  margin-bottom: 1.5rem;
-  padding: 1rem 1.5rem;
-  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.05);
-}
-.event-header {
+.salon-booking-container {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  margin-bottom: 0.5rem;
-}
-.event-title {
-  font-weight: bold;
-  font-size: 1.1rem;
-  color: #42b983;
-}
-.event-date {
-  font-size: 0.95rem;
-  color: #90caf9;
-}
-.event-description {
-  color: #b0bec5;
-  margin-bottom: 0.5rem;
-}
-.event-activities {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-.event-activities li {
-  margin-bottom: 0.25rem;
-  color: #fff;
-}
-.activity-name {
-  font-weight: 500;
-  color: #ffd54f;
-}
-.activity-time {
-  color: #90caf9;
-  margin-left: 0.5rem;
-}
-.activity-summary-row {
-  border: 1px solid #333;
-  border-radius: 6px;
+  min-height: 100vh;
   padding: 1rem;
-  margin-bottom: 1rem;
-  background: #222;
 }
-.activity-summary-main {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
+
+.event-form {
+  background: var(--background-card);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  padding-bottom: 1rem;
 }
-.activity-summary-name {
-  font-weight: 600;
+
+.form-header {
+  padding: 1.5rem 1.5rem 0;
+  margin-bottom: 1.5rem;
+  text-align: center;
 }
-.activity-summary-price {
-  color: #ffd54f;
+
+.form-header h2 {
+  color: var(--text-heading);
+  font-size: 1.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.form-content {
+  padding: 0 1.5rem;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.total-price {
+  display: inline-block;
+  font-size: 1.1rem;
   font-weight: 500;
-  min-width: 80px;
-  text-align: right;
-}
-.activity-remove-btn {
-  background: #c00;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  padding: 0.25rem 0.75rem;
-  cursor: pointer;
-}
-.activity-summary-times {
-  display: flex;
-  gap: 2rem;
-  align-items: center;
+  color: var(--accent-color);
+  background: rgba(212, 175, 55, 0.1);
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
   margin-top: 0.5rem;
 }
-.activity-summary-label {
+
+.form-group {
+  margin-bottom: 1.25rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.form-group label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--background-surface);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  transition: all 0.2s;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.date-time-container {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.date-group, .time-group {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Hide default calendar icon and use custom one */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.7;
+}
+
+/* Style for select dropdown */
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23E0E0E0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 14px;
+  padding-right: 2.5rem;
+}
+
+.activity-selection-section h3,
+.selected-activities h3 {
+  color: var(--text-heading);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.activity-selection {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.add-activity-btn {
+  background: var(--primary-color);
+  color: var(--text-heading);
+}
+
+.add-activity-btn:hover {
+  background: var(--primary-hover);
+}
+
+.activity-card {
+  background: var(--background-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  transition: all 0.2s;
+}
+
+.activity-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.activity-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--divider-color);
+}
+
+.activity-name {
   font-weight: 600;
-  display: inline-block;
-  min-width: 80px;
+  color: var(--text-heading);
+}
+
+.activity-price {
+  color: var(--accent-color);
+  font-weight: 600;
+}
+
+.activity-details {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.activity-detail {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.activity-detail i {
+  color: var(--secondary-color);
+}
+
+.activity-remove-btn {
+  background: var(--danger-color);
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  position: absolute;
+  top: -10px;
+  right: -10px;
+}
+
+.save-button {
+  width: calc(100% - 3rem);
+  background: var(--primary-color);
+  color: var(--text-heading);
+  border: none;
+  border-radius: 8px;
+  padding: 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 2rem auto 1rem;
+}
+
+.save-button:hover {
+  background: var(--primary-hover);
+  transform: translateY(-2px);
+}
+
+.save-button:disabled {
+  background: var(--border-color);
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none;
+}
+
+@media (max-width: 576px) {
+  .date-time-container {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .activity-selection {
+    flex-direction: column;
+  }
 }
 </style>

@@ -2,20 +2,32 @@
   <div class="admin-root">
     <nav class="admin-navbar">
       <span class="navbar-title">Saloon Admin</span>
-      <router-link v-if="isLoggedIn" to="/admin-settings" class="nav-link">Settings</router-link>
-      <button v-if="isLoggedIn" @click="logout">Logout</button>
+      <div class="navbar-links">
+        <router-link v-if="isLoggedIn" to="/admin-settings" class="nav-link">Settings</router-link>
+        <button v-if="isLoggedIn" @click="logout" class="logout-btn">Logout</button>
+      </div>
     </nav>
-    <div class="admin-login" v-if="!isLoggedIn">
-      <h2>Admin Login</h2>
-      <form @submit.prevent="login">
-        <label for="admin-username">Username:</label>
-        <input id="admin-username" v-model="username" required />
-        <label for="admin-password">Password:</label>
-        <input id="admin-password" type="password" v-model="password" required />
-        <button type="submit">Login</button>
-        <div v-if="loginError" class="error">{{ loginError }}</div>
-      </form>
+    
+    <div class="admin-login-container" v-if="!isLoggedIn">
+      <div class="admin-login">
+        <h2>Admin Login</h2>
+        <form @submit.prevent="login">
+          <div class="form-group">
+            <label for="admin-username">Username:</label>
+            <input id="admin-username" v-model="username" required />
+          </div>
+          
+          <div class="form-group">
+            <label for="admin-password">Password:</label>
+            <input id="admin-password" type="password" v-model="password" required />
+          </div>
+          
+          <button type="submit" class="login-btn">Login</button>
+          <div v-if="loginError" class="error">{{ loginError }}</div>
+        </form>
+      </div>
     </div>
+    
     <div v-else class="admin-dashboard">
       <div class="calendar-section">
         <h3>All Bookings Calendar</h3>
@@ -326,18 +338,18 @@ onUnmounted(() => {
 <style scoped>
 .admin-root {
   min-height: 100vh;
-  width: 100vw;
-  background: #181818;
+  width: 100%;
+  background: var(--background-main);
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .admin-navbar {
-  width: 1300px;
-  max-width: 100%;
-  height: 56px;
-  background: #23293a;
-  color: #90caf9;
+  width: 100%;
+  height: 64px;
+  background: var(--background-card);
+  color: var(--text-heading);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -346,61 +358,153 @@ onUnmounted(() => {
   top: 0;
   left: 0;
   z-index: 100;
-  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-sizing: border-box;
 }
 
 .navbar-title {
-  font-size: 1.3rem;
+  font-size: 1.5rem;
   font-weight: bold;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
+  color: var(--primary-color);
+}
+
+.navbar-links {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-left: auto;
 }
 
 .nav-link {
-  color: #90caf9;
+  color: var(--text-primary);
   text-decoration: none;
-  margin-right: 1rem;
+  transition: color 0.2s;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  white-space: nowrap;
 }
 
-.admin-login, .admin-dashboard {
-  max-width: 1200px;
-  margin: 4.5rem auto 0 auto;
-  background: #181818;
+.nav-link:hover {
+  color: var(--primary-color);
+  background: rgba(255, 111, 97, 0.1);
+}
+
+.logout-btn {
+  background: transparent;
+  border: 1px solid var(--primary-color);
+  color: var(--primary-color);
+  padding: 0.4rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.logout-btn:hover {
+  background: var(--primary-color);
+  color: var(--text-heading);
+}
+
+.admin-login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+.admin-login {
+  background: var(--background-card);
   border-radius: 8px;
   padding: 2rem;
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  text-align: center;
+}
+
+.admin-login h2 {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  color: var(--text-heading);
+  font-size: 1.75rem;
+}
+
+.admin-login .form-group {
+  margin-bottom: 1.25rem;
+  text-align: left;
+}
+
+.admin-login label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: var(--text-primary);
 }
 
 .admin-login input {
   width: 100%;
-  padding: 0.5rem;
-  margin-top: 0.25rem;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-  margin-bottom: 1rem;
-}
-
-.admin-login button {
-  background: #1976d2;
-  color: #fff;
-  border: none;
-  padding: 0.5rem 1.5rem;
-  border-radius: 4px;
-  cursor: pointer;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--background-surface);
+  color: var(--text-primary);
   font-size: 1rem;
+  transition: all 0.2s ease;
 }
 
-.admin-login .error {
-  color: #ff5252;
+.admin-login input:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(255, 111, 97, 0.2);
+  outline: none;
+}
+
+.login-btn {
+  background: var(--primary-color);
+  color: var(--text-heading);
+  border: none;
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
   margin-top: 0.5rem;
+  transition: all 0.2s ease;
 }
 
-.calendar-section {
-  margin-top: 2rem;
+.login-btn:hover {
+  background: var(--primary-hover);
+  transform: translateY(-2px);
+}
+
+.error {
+  color: var(--danger-color);
+  margin-top: 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+/* Keep existing styles for admin dashboard */
+.admin-dashboard {
+  max-width: 1200px;
+  margin: 4.5rem auto 0 auto;
+  background: var(--background-card);
+  border-radius: 8px;
+  padding: 2rem;
+  color: var(--text-primary);
+  box-shadow: var(--card-shadow);
+}
+
+.calendar-section h3 {
+  color: var(--text-heading);
+  margin-bottom: 1.5rem;
 }
 
 .empty-calendar {
-  color: #aaa;
+  color: var(--text-muted);
   font-style: italic;
   padding: 1rem 0;
 }
@@ -408,53 +512,51 @@ onUnmounted(() => {
 .google-calendar-week {
   display: grid;
   grid-template-columns: 80px repeat(7, 1fr);
-  border: 1px solid #333;
-  background: #222;
+  border: 1px solid var(--border-color);
+  background: var(--background-surface);
   border-radius: 8px;
   overflow-x: auto;
 }
 
-.calendar-header {
-  display: contents;
-}
-
-.calendar-row {
-  display: contents;
-}
-
 .calendar-cell {
-  border-bottom: 1px solid #333;
-  border-right: 1px solid #333;
+  border-bottom: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
   min-height: 48px;
   padding: 2px 4px;
-  background: #23293a;
+  background: var(--background-surface);
 }
 
 .time-header {
-  background: #181818;
-  color: #90caf9;
+  background: var(--background-card);
+  color: var(--text-muted);
   font-weight: bold;
   text-align: right;
-  border-right: 1px solid #333;
+  border-right: 1px solid var(--border-color);
 }
 
 .day-header {
-  background: #181818;
-  color: #90caf9;
+  background: var(--background-card);
+  color: var(--primary-color);
   font-weight: bold;
   text-align: center;
-  border-bottom: 2px solid #42b983;
+  border-bottom: 2px solid var(--primary-color);
 }
 
 .calendar-event-block {
-  background: #42b983;
-  color: #fff;
+  background: var(--primary-color);
+  color: var(--text-heading);
   border-radius: 4px;
   margin: 2px 0;
   padding: 2px 6px;
   font-size: 0.95em;
-  box-shadow: 0 1px 4px rgba(25, 118, 210, 0.08);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
   cursor: pointer;
+  transition: all 0.2s;
+}
+
+.calendar-event-block:hover {
+  background: var(--primary-hover);
+  transform: translateY(-2px);
 }
 
 .event-title {
@@ -477,16 +579,18 @@ onUnmounted(() => {
 
 .activity-name {
   font-weight: 500;
+  color: var(--accent-color);
 }
 
 .activity-time {
   margin-left: 0.5rem;
+  color: var(--text-secondary);
 }
 
 .event-modal-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.7);
   z-index: 2000;
   display: flex;
   align-items: center;
@@ -494,23 +598,24 @@ onUnmounted(() => {
 }
 
 .event-modal {
-  background: #23293a;
-  color: #fff;
+  background: var(--background-card);
+  color: var(--text-primary);
   border-radius: 8px;
   padding: 2rem;
   min-width: 350px;
   max-width: 95vw;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
 }
 
 .event-modal h3 {
   margin-top: 0;
-  color: #42b983;
+  color: var(--primary-color);
 }
 
 .event-modal label {
   display: block;
   margin: 1rem 0 0.5rem 0;
+  color: var(--text-primary);
 }
 
 .event-modal input, .event-modal textarea {
@@ -518,7 +623,9 @@ onUnmounted(() => {
   margin-bottom: 0.5rem;
   padding: 0.4rem;
   border-radius: 4px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-color);
+  background: var(--background-surface);
+  color: var(--text-primary);
   font-size: 1rem;
 }
 
@@ -536,8 +643,8 @@ onUnmounted(() => {
 }
 
 .modal-actions button {
-  background: #1976d2;
-  color: #fff;
+  background: var(--primary-color);
+  color: var(--text-heading);
   border: none;
   padding: 0.5rem 1.5rem;
   border-radius: 4px;
@@ -547,19 +654,39 @@ onUnmounted(() => {
 }
 
 .modal-actions button[style*='background:#c00'] {
-  background: #c00 !important;
+  background: var(--danger-color) !important;
 }
 
 .current-time {
-  background: #2e7d32 !important;
-  color: #fff !important;
+  background: var(--success-color) !important;
+  color: var(--text-heading) !important;
   font-weight: bold;
   position: relative;
 }
 
 .current-time-indicator {
-  color: #ffd54f;
+  color: var(--accent-color);
   font-size: 0.95em;
   margin-left: 0.5em;
+}
+
+/* Add responsive styles for smaller screens */
+@media (max-width: 576px) {
+  .admin-navbar {
+    padding: 0 1rem;
+  }
+  
+  .navbar-title {
+    font-size: 1.2rem;
+  }
+  
+  .navbar-links {
+    gap: 0.5rem;
+  }
+  
+  .nav-link, .logout-btn {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.85rem;
+  }
 }
 </style>
