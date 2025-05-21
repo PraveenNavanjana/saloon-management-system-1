@@ -78,6 +78,11 @@
           <input v-model="act.startHour" style="width:40px;" />:<input v-model="act.startMinute" style="width:40px;" />
           -
           <input v-model="act.endHour" style="width:40px;" />:<input v-model="act.endMinute" style="width:40px;" />
+          <select v-model="act.barber" style="margin-left:0.5rem;" @change="handleBarberChange(act)">
+            <option v-for="barber in availableBarbers" :key="barber.name" :value="barber.name">{{ barber.name }}</option>
+            <option v-if="act.barber && !availableBarbers.some(b => b.name === act.barber)" :value="act.barber">{{ act.barber }} (add new)</option>
+          </select>
+          <input v-if="act.barber && !availableBarbers.some(b => b.name === act.barber)" v-model="act.barber" placeholder="New barber name" style="margin-left:0.5rem; width:120px;" @blur="addNewBarber(act.barber)" />
         </div>
         <div class="modal-actions">
           <button @click="saveEventEdits">Save</button>
@@ -90,7 +95,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { getFirestore, collection, getDocs, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore'
 import { initializeApp } from 'firebase/app'
 import { useRouter } from 'vue-router'
@@ -119,6 +124,26 @@ const adminActivities = ref([
   { name: 'Pedicure', duration: 50, price: 30 },
   { name: 'Massage', duration: 60, price: 60 },
 ])
+
+const adminBarbers = ref([])
+
+async function loadBarbers() {
+  // Try localStorage first
+  const b = localStorage.getItem('saloonBarbers')
+  if (b) adminBarbers.value = JSON.parse(b)
+  // Try Firestore
+  const settingsDoc = await getDocs(collection(db, 'settings'))
+  const docSnap = settingsDoc.docs.find(d => d.id === 'saloon')
+  if (docSnap && docSnap.data().barbers) {
+    adminBarbers.value = docSnap.data().barbers
+  }
+  // Ensure all barbers have 'available' property
+  for (const barber of adminBarbers.value) {
+    if (typeof barber.available === 'undefined') barber.available = true
+  }
+}
+
+const availableBarbers = computed(() => adminBarbers.value.filter(b => b.available))
 
 const calendarWeekOffset = ref(0)
 
@@ -269,6 +294,7 @@ onMounted(() => {
   } else {
     loadAdminSettings()
   }
+  loadBarbers()
 })
 
 function login() {
@@ -328,6 +354,19 @@ async function deleteEvent(id) {
   await deleteDoc(doc(db, 'events', id))
   await fetchBookings()
   closeEventModal()
+}
+
+function handleBarberChange(act) {
+  if (!availableBarbers.value.some(b => b.name === act.barber)) {
+    console.log(`New barber selected: ${act.barber}`);
+    // Additional logic can be added here if needed
+  }
+}
+
+function addNewBarber(name) {
+  if (!name || adminBarbers.value.some(b => b.name === name)) return;
+  adminBarbers.value.push({ name, available: true });
+  localStorage.setItem('saloonBarbers', JSON.stringify(adminBarbers.value));
 }
 
 onUnmounted(() => {
