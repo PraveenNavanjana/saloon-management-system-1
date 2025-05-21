@@ -9,13 +9,24 @@ const props = defineProps({
   showBarbers: {
     type: Boolean,
     default: true
+  },
+  initialOffset: {
+    type: Number,
+    default: 0
   }
-})
+});
 
 const emit = defineEmits(['booking-clicked', 'prev-week', 'next-week'])
 
 // Calendar week offset
-const calendarWeekOffset = ref(0)
+const calendarWeekOffset = ref(props.initialOffset || 0);
+
+// Watch for changes to the initialOffset prop
+watch(() => props.initialOffset, (newOffset) => {
+  if (newOffset !== calendarWeekOffset.value) {
+    calendarWeekOffset.value = newOffset;
+  }
+});
 
 // Calculate the dates for the current week view
 const weekDates = computed(() => {
@@ -75,21 +86,30 @@ const timeSlots = computed(() => {
 
 // Check if a booking is in a specific day and time slot
 const getBookingsForSlot = (date, timeSlot) => {
-  const dateStr = date.toISOString().split('T')[0]
-  const [slotHour, slotMinute] = timeSlot.split(':').map(Number)
+  // Fix timezone issue properly by normalizing both dates the same way
+  // Create a date string in YYYY-MM-DD format without timezone shifts
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const dateStr = `${year}-${month}-${day}`;
+  
+  const [slotHour, slotMinute] = timeSlot.split(':').map(Number);
   
   return props.bookings.filter(booking => {
-    if (booking.date !== dateStr) return false
+    if (!booking.date) return false;
+    
+    // Compare using normalized date format
+    if (booking.date !== dateStr) return false;
     
     return booking.activities.some(act => {
-      const startTime = parseInt(act.startHour) * 60 + parseInt(act.startMinute)
-      const endTime = parseInt(act.endHour) * 60 + parseInt(act.endMinute)
-      const slotTime = slotHour * 60 + slotMinute
-      const slotEndTime = slotTime + 30
+      const startTime = parseInt(act.startHour) * 60 + parseInt(act.startMinute);
+      const endTime = parseInt(act.endHour) * 60 + parseInt(act.endMinute);
+      const slotTime = slotHour * 60 + slotMinute;
+      const slotEndTime = slotTime + 30;
       
-      return startTime < slotEndTime && endTime > slotTime
-    })
-  })
+      return startTime < slotEndTime && endTime > slotTime;
+    });
+  });
 }
 
 // Get activity color based on activity type for visual distinction
@@ -120,15 +140,17 @@ const getActivityColor = (activityName, index = 0) => {
   return fallbackColors[index % fallbackColors.length]
 }
 
-// Navigation handlers
+// Navigation handlers - enhanced with more robust implementation
 function goToPrevWeek() {
-  calendarWeekOffset.value--
-  emit('prev-week')
+  calendarWeekOffset.value--;
+  console.log("Calendar going to previous week, new offset:", calendarWeekOffset.value);
+  emit('prev-week', calendarWeekOffset.value);
 }
 
 function goToNextWeek() {
-  calendarWeekOffset.value++
-  emit('next-week')
+  calendarWeekOffset.value++;
+  console.log("Calendar going to next week, new offset:", calendarWeekOffset.value);
+  emit('next-week', calendarWeekOffset.value);
 }
 
 // Current time tracking for highlighting current slot

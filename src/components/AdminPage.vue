@@ -3,42 +3,23 @@
     <nav class="admin-navbar">
       <span class="navbar-title">Saloon Admin</span>
       <div class="navbar-links">
-        <router-link v-if="isLoggedIn" to="/admin-settings" class="nav-link">Settings</router-link>
-        <button v-if="isLoggedIn" @click="logout" class="logout-btn">Logout</button>
+        <router-link to="/admin-settings" class="nav-link">Settings</router-link>
+        <button @click="logout" class="logout-btn">Logout</button>
       </div>
     </nav>
     
-    <div class="admin-login-container" v-if="!isLoggedIn">
-      <div class="admin-login">
-        <h2>Admin Login</h2>
-        <form @submit.prevent="login">
-          <div class="form-group">
-            <label for="admin-username">Username:</label>
-            <input id="admin-username" v-model="username" required />
-          </div>
-          
-          <div class="form-group">
-            <label for="admin-password">Password:</label>
-            <input id="admin-password" type="password" v-model="password" required />
-          </div>
-          
-          <button type="submit" class="login-btn">Login</button>
-          <div v-if="loginError" class="error">{{ loginError }}</div>
-        </form>
-      </div>
-    </div>
-    
-    <div v-else class="admin-dashboard full-width">
+    <div class="admin-dashboard full-width">
       <div class="calendar-section">
         <div v-if="loading" class="loading-indicator">Loading bookings...</div>
         <div v-else>
           <div v-if="bookings.length === 0" class="empty-calendar">No bookings found.</div>
           <BookingCalendar 
             v-else 
-            :bookings="bookings" 
+            :bookings="bookings"
+            :initialOffset="calendarWeekOffset" 
             @booking-clicked="openEventModal" 
-            @prev-week="calendarWeekOffset--" 
-            @next-week="calendarWeekOffset++" 
+            @prev-week="handleWeekChange" 
+            @next-week="handleWeekChange" 
           />
         </div>
       </div>
@@ -144,10 +125,6 @@ const app = initializeApp(firebaseConfig)
 const db = getFirestore(app)
 const router = useRouter()
 
-const username = ref('')
-const password = ref('')
-const isLoggedIn = ref(false)
-const loginError = ref('')
 const bookings = ref([])
 const loading = ref(false)
 const showEventModal = ref(false)
@@ -192,7 +169,7 @@ let refreshInterval = null
 function startAutoRefresh() {
   if (refreshInterval) clearInterval(refreshInterval)
   refreshInterval = setInterval(() => {
-    if (isLoggedIn.value) fetchBookings()
+    fetchBookings()
   }, 300000) // 5 minutes
 }
 
@@ -235,40 +212,15 @@ async function loadAdminSettings() {
   }
 }
 
-const ADMIN_USERNAME = 'admin'
-const ADMIN_PASSWORD = 'admin123' // For demo only. Use env vars in production.
-
 onMounted(() => {
-  if (localStorage.getItem('adminLoggedIn') === 'true') {
-    isLoggedIn.value = true
-    fetchBookings()
-    startAutoRefresh()
-  } else {
-    loadAdminSettings()
-  }
+  fetchBookings()
+  startAutoRefresh()
   loadBarbers()
 })
 
-function login() {
-  if (username.value === ADMIN_USERNAME && password.value === ADMIN_PASSWORD) {
-    isLoggedIn.value = true
-    loginError.value = ''
-    localStorage.setItem('adminLoggedIn', 'true')
-    fetchBookings()
-    startAutoRefresh()
-  } else {
-    loginError.value = 'Invalid username or password.'
-  }
-}
-
 function logout() {
-  isLoggedIn.value = false
-  username.value = ''
-  password.value = ''
-  bookings.value = []
   localStorage.removeItem('adminLoggedIn')
-  stopAutoRefresh()
-  router.push('/')
+  router.push('/admin-login')
 }
 
 // Improved fetchBookings function to ensure consistent date format
@@ -279,28 +231,17 @@ async function fetchBookings() {
     // Process each booking to ensure consistent date format
     bookings.value = querySnapshot.docs.map(doc => {
       const data = doc.data();
-      // Ensure date is in YYYY-MM-DD format
-      let formattedDate = data.date;
-      if (formattedDate) {
-        // Try to standardize the date format if needed
-        try {
-          const dateObj = new Date(formattedDate);
-          if (!isNaN(dateObj.getTime())) {
-            formattedDate = dateObj.toISOString().split('T')[0];
-          }
-        } catch (e) {
-          console.error("Error formatting date:", e);
-        }
-      }
       
+      // Keep date exactly as stored, without any transformation
       return { 
         id: doc.id, 
         ...data,
-        date: formattedDate 
+        // Ensure date is present with proper fallback
+        date: data.date || ''
       };
     });
     
-    console.log('Fetched bookings:', bookings.value.length);
+    console.log('Fetched bookings:', bookings.value.length, 'First booking date example:', bookings.value[0]?.date);
   } catch (error) {
     console.error('Error fetching bookings:', error);
   } finally {
@@ -308,9 +249,16 @@ async function fetchBookings() {
   }
 }
 
+// Fix the handleWeekChange function to properly update the offset
+function handleWeekChange(newOffset) {
+  console.log("Admin handling week change to:", newOffset);
+  calendarWeekOffset.value = newOffset;
+  fetchBookings();
+}
+
 // Add a watch to refresh bookings when week changes
 watch(calendarWeekOffset, () => {
-  if (isLoggedIn.value) fetchBookings();
+  fetchBookings();
 });
 
 // Handle booking details display
@@ -326,17 +274,23 @@ function closeEventModal() {
 }
 
 async function saveEventEdits() {
-  if (!modalEvent.value) return
-  const eventRef = doc(db, 'events', modalEvent.value.id)
+  if (!modalEvent.value) return;
+  
+  // Log the date before saving for debugging
+  console.log('Saving booking with date:', modalEvent.value.date);
+  
+  const eventRef = doc(db, 'events', modalEvent.value.id);
+  
   await updateDoc(eventRef, {
     title: modalEvent.value.title,
     description: modalEvent.value.description,
-    email: modalEvent.value.email, // Include the email field
-    date: modalEvent.value.date,
+    email: modalEvent.value.email, 
+    date: modalEvent.value.date, // Keep the date exactly as is
     activities: modalEvent.value.activities
-  })
-  await fetchBookings()
-  closeEventModal()
+  });
+  
+  await fetchBookings();
+  closeEventModal();
 }
 
 async function deleteEvent(id) {

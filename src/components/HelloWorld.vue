@@ -287,6 +287,9 @@ const localEvents = ref([])
 // Add a new ref for the email field
 const eventEmail = ref('')
 
+// Add a new ref for tracking booking success state
+const bookingSuccess = ref(false)
+
 async function saveEventToFirebase() {
   if (!eventTitle.value || !eventDate.value || selectedActivities.value.length === 0) {
     alert('Please fill in your name, select a date, and choose at least one service.')
@@ -294,16 +297,18 @@ async function saveEventToFirebase() {
   }
   
   try {
-    // Ensure date is in YYYY-MM-DD format
-    const dateObj = new Date(eventDate.value);
-    const formattedDate = dateObj.toISOString().split('T')[0];
+    // Fix timezone issue - ensure we get the date as selected by user without timezone adjustments
+    // Create a date object and get YYYY-MM-DD without timezone offset
+    const datePartsStr = eventDate.value.split('-');
+    // Use UTC date to prevent timezone shifts
+    const formattedDate = eventDate.value;
     
     // Create the booking object with new fields
     const bookingData = {
       title: eventTitle.value,
       description: eventDescription.value, // Now used for contact number
       email: eventEmail.value, // New field for email
-      date: formattedDate,  // Use standardized date format
+      date: formattedDate,  // Ensure consistent date format
       activities: JSON.parse(JSON.stringify(selectedActivities.value)),
       createdAt: new Date().toISOString(),
     };
@@ -313,21 +318,31 @@ async function saveEventToFirebase() {
     // Add to Firestore
     await addDoc(collection(db, 'events'), bookingData);
     
-    // Clear form
-    eventTitle.value = '';
-    eventDescription.value = '';
-    eventEmail.value = '';
-    eventDate.value = '';
-    selectedActivities.value = [];
+    // Set booking success to true to show success message
+    bookingSuccess.value = true;
     
     // Refresh local events
     await fetchEventsFromFirebase();
-    
-    alert('Your appointment has been booked successfully!');
   } catch (error) {
     console.error('Error saving appointment:', error);
     alert('There was an error booking your appointment. Please try again.');
   }
+}
+
+// Add a new function to reset the form for another booking
+function makeAnotherBooking() {
+  // Reset form fields
+  eventTitle.value = '';
+  eventDescription.value = '';
+  eventEmail.value = '';
+  selectedActivities.value = [];
+  
+  // Set a default date (today)
+  const today = new Date();
+  eventDate.value = today.toISOString().split('T')[0];
+  
+  // Reset success state
+  bookingSuccess.value = false;
 }
 
 // Function to ensure date format consistency when fetching events
@@ -335,18 +350,10 @@ async function fetchEventsFromFirebase() {
   const querySnapshot = await getDocs(collection(db, 'events'));
   localEvents.value = querySnapshot.docs.map(doc => {
     const data = doc.data();
-    // Standardize date format if needed
-    if (data.date) {
-      try {
-        const dateObj = new Date(data.date);
-        if (!isNaN(dateObj.getTime())) {
-          data.date = dateObj.toISOString().split('T')[0];
-        }
-      } catch (e) {
-        console.error("Error formatting date:", e);
-      }
-    }
-    return { id: doc.id, ...data };
+    // Keep original date format without timezone adjustment
+    let formattedDate = data.date;
+    
+    return { id: doc.id, ...data, date: formattedDate };
   });
 }
 
@@ -356,11 +363,13 @@ watch(eventDate, (newDate) => {
     try {
       // Only format if it's not already in YYYY-MM-DD format
       if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
-        const dateObj = new Date(newDate);
-        if (!isNaN(dateObj.getTime())) {
-          // Format as YYYY-MM-DD
-          const formattedForInput = dateObj.toISOString().split('T')[0];
-          eventDate.value = formattedForInput;
+        const input = new Date(newDate);
+        if (!isNaN(input.getTime())) {
+          // Format as YYYY-MM-DD without timezone adjustments
+          const year = input.getFullYear();
+          const month = (input.getMonth() + 1).toString().padStart(2, '0');
+          const day = input.getDate().toString().padStart(2, '0');
+          eventDate.value = `${year}-${month}-${day}`;
         }
       }
     } catch (e) {
@@ -416,7 +425,20 @@ function focusDateInput(event) {
 
 <template>
   <div class="salon-booking-container">
-    <form @submit.prevent="saveEventToFirebase" class="event-form">
+    <!-- Success Message Panel -->
+    <div v-if="bookingSuccess" class="booking-success-panel">
+      <div class="success-icon">
+        <i class="fas fa-check-circle"></i>
+      </div>
+      <h2>Your appointment has been booked successfully!</h2>
+      <p>We look forward to seeing you on {{ eventDate }}.</p>
+      <button @click="makeAnotherBooking" class="another-booking-btn">
+        <i class="fas fa-calendar-plus"></i> Make Another Booking
+      </button>
+    </div>
+    
+    <!-- Booking Form - visible only when not showing success message -->
+    <form v-else @submit.prevent="saveEventToFirebase" class="event-form">
       <div class="form-header">
         <h2>Book Your Appointment</h2>
         <div class="total-price">
@@ -817,14 +839,95 @@ select {
   margin-left: 4px;
 }
 
+/* Add new styles for the success panel */
+.booking-success-panel {
+  background: var(--background-card);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  padding: 3rem 2rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.success-icon {
+  font-size: 4rem;
+  color: var(--success-color);
+  margin-bottom: 1.5rem;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.95);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 1;
+  }
+}
+
+.booking-success-panel h2 {
+  color: var(--text-heading);
+  font-size: 1.75rem;
+  margin-bottom: 1rem;
+}
+
+.booking-success-panel p {
+  color: var(--text-secondary);
+  margin-bottom: 2rem;
+  font-size: 1.1rem;
+}
+
+.another-booking-btn {
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+}
+
+.another-booking-btn:hover {
+  background: var(--primary-hover);
+  transform: translateY(-3px);
+  box-shadow: 0 6px 16px rgba(231, 76, 60, 0.4);
+}
+
+.another-booking-btn:active {
+  transform: translateY(-1px);
+}
+
+/* Add responsiveness for the success panel */
 @media (max-width: 576px) {
-  .date-time-container {
-    flex-direction: column;
-    gap: 1rem;
+  .booking-success-panel {
+    padding: 2rem 1.5rem;
   }
   
-  .activity-selection {
-    flex-direction: column;
+  .success-icon {
+    font-size: 3.5rem;
+  }
+  
+  .booking-success-panel h2 {
+    font-size: 1.5rem;
   }
 }
 </style>
