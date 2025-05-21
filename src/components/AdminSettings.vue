@@ -259,25 +259,29 @@ async function saveAdminSettings() {
 }
 
 async function loadAdminSettings() {
-  const o = localStorage.getItem('saloonOpenTime')
-  const c = localStorage.getItem('saloonCloseTime')
-  const a = localStorage.getItem('saloonActivities')
-  const b = localStorage.getItem('saloonBarbers')
-  const cur = localStorage.getItem('saloonCurrency')
-  if (o) openTime.value = o
-  if (c) closeTime.value = c
-  if (a) adminActivities.value = JSON.parse(a)
-  if (b) adminBarbers.value = JSON.parse(b)
-  if (cur) currency.value = cur
-  const settingsDoc = await getDocs(collection(db, 'settings'))
-  const docSnap = settingsDoc.docs.find(d => d.id === 'saloon')
+  const o = localStorage.getItem('saloonOpenTime');
+  const c = localStorage.getItem('saloonCloseTime');
+  const a = localStorage.getItem('saloonActivities');
+  const b = localStorage.getItem('saloonBarbers');
+  const cur = localStorage.getItem('saloonCurrency');
+
+  if (o) openTime.value = o;
+  if (c) closeTime.value = c;
+  if (a) adminActivities.value = JSON.parse(a);
+  else adminActivities.value = []; // Ensure adminActivities is initialized
+
+  if (b) adminBarbers.value = JSON.parse(b);
+  if (cur) currency.value = cur;
+
+  const settingsDoc = await getDocs(collection(db, 'settings'));
+  const docSnap = settingsDoc.docs.find(d => d.id === 'saloon');
   if (docSnap) {
-    const data = docSnap.data()
-    openTime.value = data.openTime
-    closeTime.value = data.closeTime
-    adminActivities.value = data.activities
-    if (data.barbers) adminBarbers.value = data.barbers
-    if (data.currency) currency.value = data.currency
+    const data = docSnap.data();
+    openTime.value = data.openTime;
+    closeTime.value = data.closeTime;
+    adminActivities.value = data.activities || []; // Fallback to empty array
+    if (data.barbers) adminBarbers.value = data.barbers;
+    if (data.currency) currency.value = data.currency;
   }
 }
 
